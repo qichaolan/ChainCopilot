@@ -1,52 +1,116 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import { CopilotSidebar } from "@copilotkit/react-ui";
-import { useCopilotReadable } from "@copilotkit/react-core";
-import { OptionsChainDashboard } from "@/components/OptionsChainDashboard";
-import { Header } from "@/components/Header";
-import { Footer } from "@/components/Footer";
+import { OptionsChainDashboard } from "@/components/dashboard/OptionsChainDashboard";
+import { Header } from "@/components/layout/Header";
+import { Footer } from "@/components/layout/Footer";
+import ChatOrchestrator from "@/components/chat/ChatOrchestrator";
+import { PanelRight } from "lucide-react";
+
+// Desktop breakpoint (lg in Tailwind)
+const DESKTOP_BREAKPOINT = 1024;
+
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => {
+    // Check initial value
+    const checkDesktop = () => setIsDesktop(window.innerWidth >= DESKTOP_BREAKPOINT);
+    checkDesktop();
+
+    // Listen for resize
+    const mediaQuery = window.matchMedia(`(min-width: ${DESKTOP_BREAKPOINT}px)`);
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mediaQuery.addEventListener("change", handler);
+
+    return () => mediaQuery.removeEventListener("change", handler);
+  }, []);
+
+  return isDesktop;
+}
 
 function HomeContent() {
   const searchParams = useSearchParams();
-  const openCopilot = searchParams.get("openCopilot") === "true";
+  const openCopilotParam = searchParams.get("openCopilot") === "true";
+  const isDesktop = useIsDesktop();
 
-  // Make current time available to the AI
-  useCopilotReadable({
-    description: "Current date and time for context",
-    value: new Date().toISOString(),
-  });
+  // Chat state - default open on desktop, closed on mobile
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
+  // Set initial chat state based on viewport and URL param
+  useEffect(() => {
+    if (openCopilotParam) {
+      setIsChatOpen(true);
+    } else {
+      // Default: open on desktop, closed on mobile
+      setIsChatOpen(isDesktop);
+    }
+  }, [isDesktop, openCopilotParam]);
+
+  const handleChatOpenChange = useCallback((open: boolean) => {
+    setIsChatOpen(open);
+  }, []);
+
+  // Desktop layout: Everything reflows when chat is open
+  if (isDesktop) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-slate-900">
+        {/* Content area - shrinks when chat is open */}
+        <div
+          className={`transition-[margin] duration-200 ${
+            isChatOpen ? 'mr-[380px]' : ''
+          }`}
+        >
+          <Header />
+
+          <main className="px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+            <div className="max-w-7xl mx-auto">
+              <OptionsChainDashboard />
+            </div>
+            <Footer />
+          </main>
+        </div>
+
+        {/* Fixed chat panel - full height from top */}
+        <ChatOrchestrator
+          isOpen={isChatOpen}
+          onOpenChange={handleChatOpenChange}
+          mode="docked"
+        />
+
+        {/* Desktop toggle button when chat is closed */}
+        {!isChatOpen && (
+          <button
+            onClick={() => setIsChatOpen(true)}
+            className="fixed bottom-6 right-6 w-14 h-14 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center transition-all z-50 hover:scale-105"
+            aria-label="Open chat"
+          >
+            <PanelRight className="w-6 h-6" />
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // Mobile/tablet layout: standard vertical layout with overlay chat
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-slate-900">
       <Header />
 
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
-        <OptionsChainDashboard />
+      <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+        <div className="max-w-7xl mx-auto">
+          <OptionsChainDashboard />
+        </div>
       </main>
 
       <Footer />
 
-      <CopilotSidebar
-        defaultOpen={openCopilot}
-        labels={{
-          title: "ChainCopilot",
-          initial: "Hi! I'm your AI options trading assistant. Ask me about options strategies, market analysis, or specific trades.",
-          placeholder: "Ask about options, strategies, Greeks...",
-        }}
-        instructions={`You are ChainCopilot, an expert AI assistant for stock options trading analysis.
-You help traders understand:
-- Options chain data and Greeks (Delta, Gamma, Theta, Vega, IV)
-- Trading strategies (covered calls, cash-secured puts, spreads, iron condors, straddles)
-- Risk/reward analysis and probability of profit
-- Market sentiment and unusual options activity
-- Entry/exit timing and position sizing
-
-Be concise, data-driven, and always emphasize risk management.
-When analyzing trades, consider the current market context and the user's likely risk tolerance.
-Format numbers clearly and use bullet points for key metrics.`}
-        className="z-50"
+      {/* Mobile/tablet: overlay chat */}
+      <ChatOrchestrator
+        isOpen={isChatOpen}
+        onOpenChange={handleChatOpenChange}
+        mode="overlay"
       />
     </div>
   );

@@ -3,127 +3,128 @@ import {
   GoogleGenerativeAIAdapter,
   copilotRuntimeNextJSAppRouterEndpoint,
 } from "@copilotkit/runtime";
-import { TavilySearchResults } from "@tavily/core";
+import { NextRequest, NextResponse } from "next/server";
+import { getSystemPrompt } from "@/lib/ai/promptLoader";
 
-// Initialize the Google Gemini adapter
+/**
+ * CopilotKit Runtime API Route
+ *
+ * This endpoint handles AI chat requests from CopilotKit components.
+ * Uses Google Generative AI (Gemini) as the LLM provider.
+ *
+ * NOTE: We inject system prompts server-side because useCopilotAdditionalInstructions
+ * doesn't properly forward to the Google adapter.
+ */
+
+// Check for API key at startup
+if (!process.env.GOOGLE_API_KEY) {
+  console.error("WARNING: GOOGLE_API_KEY is not set in environment variables");
+}
+
+// Load system prompt from file (server-side)
+let systemPrompt: string;
+try {
+  systemPrompt = getSystemPrompt();
+  console.log("[CopilotKit] System prompt loaded from file");
+} catch (error) {
+  console.warn("[CopilotKit] Failed to load system prompt from file, using fallback");
+  systemPrompt = `You are ChainCopilot, an expert AI assistant for stock options trading analysis.
+
+Your expertise includes:
+- Options chain data and Greeks (Delta, Gamma, Theta, Vega, IV)
+- Trading strategies (covered calls, cash-secured puts, spreads, iron condors, straddles)
+- Risk/reward analysis and probability of profit
+- Market sentiment and unusual options activity
+- Entry/exit timing and position sizing
+
+Guidelines:
+- Be concise and data-driven
+- Always emphasize risk management
+- Format numbers clearly and use bullet points for key metrics
+- Respond conversationally to greetings and general questions
+- When given options data in context, analyze it specifically`;
+}
+
+// Initialize the Gemini adapter
+// DO NOT CHANGE: gemini-2.5-flash-lite is the intended model, should not modify this.
 const serviceAdapter = new GoogleGenerativeAIAdapter({
-  model: "gemini-2.0-flash",
+  model: "gemini-2.5-flash-lite",
+  apiVersion: "v1",
 });
 
-// Initialize Tavily for web search capabilities
-const tavily = new TavilySearchResults({
-  apiKey: process.env.TAVILY_API_KEY,
-});
+// Create the CopilotKit runtime
+const runtime = new CopilotRuntime();
 
-// Create the CopilotKit runtime with actions
-const runtime = new CopilotRuntime({
-  actions: [
-    {
-      name: "searchInternet",
-      description:
-        "Search the internet for real-time information about stocks, options, market news, and trading strategies",
-      parameters: [
-        {
-          name: "query",
-          type: "string",
-          description: "The search query",
-          required: true,
-        },
-      ],
-      handler: async ({ query }: { query: string }) => {
-        const results = await tavily.search({
-          query,
-          maxResults: 5,
+// Export the handler for Next.js App Router
+export const POST = async (req: NextRequest) => {
+  console.log("=== CopilotKit API Request ===");
+
+  // Check API key before processing
+  if (!process.env.GOOGLE_API_KEY) {
+    console.error("GOOGLE_API_KEY is missing");
+    return NextResponse.json(
+      { error: "API key not configured. Set GOOGLE_API_KEY in .env.local" },
+      { status: 500 }
+    );
+  }
+
+  try {
+    // Clone and modify the request body to inject system prompt
+    const body = await req.json();
+
+    // Log original request for debugging
+    console.log("[CopilotKit] Original messages count:", body.messages?.length || 0);
+
+    // Inject system prompt into context as high-priority instruction
+    if (!body.context) {
+      body.context = [];
+    }
+
+    // Add system prompt as the FIRST context item with clear instruction framing
+    body.context.unshift({
+      description: "SYSTEM INSTRUCTIONS - You MUST follow these instructions for every response",
+      value: JSON.stringify(systemPrompt),
+    });
+
+    // Also inject as a system message at the start of messages array
+    if (body.messages && Array.isArray(body.messages)) {
+      // Check if first message is already a system instruction
+      const firstMsg = body.messages[0];
+      const hasSystemMsg = firstMsg?.role === "system" ||
+        (firstMsg?.content && firstMsg.content.includes("ChainCopilot"));
+
+      if (!hasSystemMsg) {
+        // Prepend system message
+        body.messages.unshift({
+          id: `system-${Date.now()}`,
+          role: "system",
+          content: systemPrompt,
         });
-        return results;
-      },
-    },
-    {
-      name: "analyzeOptionsStrategy",
-      description:
-        "Analyze an options trading strategy and provide insights on risk/reward, probability of profit, and key metrics",
-      parameters: [
-        {
-          name: "strategy",
-          type: "string",
-          description:
-            "The strategy type: covered_call, cash_secured_put, credit_spread, debit_spread, iron_condor, straddle, strangle",
-          required: true,
-        },
-        {
-          name: "underlyingPrice",
-          type: "number",
-          description: "Current price of the underlying stock",
-          required: true,
-        },
-        {
-          name: "strikePrice",
-          type: "number",
-          description: "Strike price of the option",
-          required: true,
-        },
-        {
-          name: "premium",
-          type: "number",
-          description: "Premium received or paid",
-          required: true,
-        },
-        {
-          name: "daysToExpiration",
-          type: "number",
-          description: "Days until expiration",
-          required: true,
-        },
-      ],
-      handler: async ({
-        strategy,
-        underlyingPrice,
-        strikePrice,
-        premium,
-        daysToExpiration,
-      }: {
-        strategy: string;
-        underlyingPrice: number;
-        strikePrice: number;
-        premium: number;
-        daysToExpiration: number;
-      }) => {
-        // Calculate basic strategy metrics
-        const moneyness =
-          ((strikePrice - underlyingPrice) / underlyingPrice) * 100;
-        const annualizedReturn =
-          (premium / underlyingPrice) * (365 / daysToExpiration) * 100;
+        console.log("[CopilotKit] Injected system message");
+      }
+    }
 
-        return {
-          strategy,
-          metrics: {
-            moneyness: `${moneyness.toFixed(2)}%`,
-            annualizedReturn: `${annualizedReturn.toFixed(2)}%`,
-            maxProfit: premium,
-            breakeven:
-              strategy.includes("put") || strategy.includes("call")
-                ? strikePrice - premium
-                : strikePrice + premium,
-            daysToExpiration,
-          },
-          recommendation:
-            Math.abs(moneyness) < 5
-              ? "Near ATM - Higher premium but more risk"
-              : moneyness > 5
-                ? "OTM - Lower premium but higher probability of profit"
-                : "ITM - Higher premium but lower probability of profit",
-        };
-      },
-    },
-  ],
-});
+    // Create modified request
+    const modifiedReq = new NextRequest(req.url, {
+      method: "POST",
+      headers: req.headers,
+      body: JSON.stringify(body),
+    });
 
-export const POST = async (req: Request) => {
-  const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
-    runtime,
-    serviceAdapter,
-    endpoint: "/api/copilotkit",
-  });
+    const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
+      runtime,
+      serviceAdapter,
+      endpoint: "/api/copilotkit",
+    });
 
-  return handleRequest(req);
+    const response = await handleRequest(modifiedReq);
+    console.log("Response status:", response.status);
+    return response;
+  } catch (error) {
+    console.error("CopilotKit API error:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
 };

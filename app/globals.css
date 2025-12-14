@@ -132,3 +132,10 @@ html {
 .atm {
   @apply bg-yellow-100 dark:bg-yellow-900/30 border-yellow-400;
 }
+
+/* Hide CopilotKit Inspector badge */
+cpk-web-inspector,
+[class*="cpk-web-inspector"],
+.cpk-web-inspector {
+  display: none !important;
+}

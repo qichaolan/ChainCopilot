@@ -1,0 +1,13 @@
+# OpenBB Options Fetcher Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core OpenBB platform
+openbb>=4.0.0
+
+# Data providers (Cboe default, Yahoo Finance fallback)
+openbb-cboe>=1.3.0
+openbb-yfinance>=1.3.0
+
+# Optional: Additional providers
+# openbb-intrinio>=1.3.0
+# openbb-tradier>=1.3.0
