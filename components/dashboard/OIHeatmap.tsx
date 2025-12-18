@@ -19,10 +19,32 @@ import {
   cellKey,
 } from "@/lib/heatmap/oi-heatmap";
 
+// Viewport info exposed to parent
+export interface HeatmapViewport {
+  strikeMin: number;
+  strikeMax: number;
+  expirationsShown: string[];
+  viewType: OIViewType;
+  strikeRange: StrikeRangeType;
+  expGroup: ExpirationGroupType;
+}
+
+// Cell info for hover/select
+export interface HeatmapCellInfo {
+  expiration: string;
+  strike: number;
+  callOI: number;
+  putOI: number;
+  netOI: number;
+}
+
 interface OIHeatmapProps {
   contracts: OptionContract[];
   underlyingPrice: number;
   onCellClick?: (expiration: string, strike: number) => void;
+  onViewportChange?: (viewport: HeatmapViewport) => void;
+  onHoverCell?: (cell: HeatmapCellInfo | null) => void;
+  onSelectCell?: (cell: HeatmapCellInfo | null) => void;
 }
 
 // Tooltip component - isolated to prevent grid rerenders
@@ -161,7 +183,7 @@ const HeatmapRow = memo(function HeatmapRow({
   );
 });
 
-export function OIHeatmap({ contracts, underlyingPrice, onCellClick }: OIHeatmapProps) {
+export function OIHeatmap({ contracts, underlyingPrice, onCellClick, onViewportChange, onHoverCell, onSelectCell }: OIHeatmapProps) {
   // View controls
   const [viewType, setViewType] = useState<OIViewType>("net");
   const [strikeRange, setStrikeRange] = useState<StrikeRangeType>("20");
@@ -227,6 +249,20 @@ export function OIHeatmap({ contracts, underlyingPrice, onCellClick }: OIHeatmap
     return buildHeatmapData(contracts, config);
   }, [contracts, viewType, strikeRange, expGroup, underlyingPrice]);
 
+  // Report viewport changes to parent
+  useLayoutEffect(() => {
+    if (onViewportChange && heatmapData.strikes.length > 0) {
+      onViewportChange({
+        strikeMin: heatmapData.strikes[0],
+        strikeMax: heatmapData.strikes[heatmapData.strikes.length - 1],
+        expirationsShown: heatmapData.expirations,
+        viewType,
+        strikeRange,
+        expGroup,
+      });
+    }
+  }, [onViewportChange, heatmapData.strikes, heatmapData.expirations, viewType, strikeRange, expGroup]);
+
   // Precompute ATM strike (closest strike to underlying price)
   const atmStrike = useMemo(() => {
     if (heatmapData.strikes.length === 0) return null;
@@ -290,18 +326,42 @@ export function OIHeatmap({ contracts, underlyingPrice, onCellClick }: OIHeatmap
           position: { ...tooltipPosRef.current },
         });
       });
+
+      // Report hover to parent
+      if (onHoverCell) {
+        onHoverCell(cell && cell.hasData ? {
+          expiration: cell.expiration,
+          strike: cell.strike,
+          callOI: cell.callOI,
+          putOI: cell.putOI,
+          netOI: cell.netOI,
+        } : null);
+      }
     },
-    []
+    [onHoverCell]
   );
 
   // Handle cell click
   const handleCellClick = useCallback(
     (cell: HeatmapCell) => {
-      if (onCellClick && cell.hasData) {
-        onCellClick(cell.expiration, cell.strike);
+      if (cell.hasData) {
+        // Report selection to parent
+        if (onSelectCell) {
+          onSelectCell({
+            expiration: cell.expiration,
+            strike: cell.strike,
+            callOI: cell.callOI,
+            putOI: cell.putOI,
+            netOI: cell.netOI,
+          });
+        }
+        // Also call onCellClick for navigation
+        if (onCellClick) {
+          onCellClick(cell.expiration, cell.strike);
+        }
       }
     },
-    [onCellClick]
+    [onCellClick, onSelectCell]
   );
 
   // Calculate dynamic cell size based on data dimensions

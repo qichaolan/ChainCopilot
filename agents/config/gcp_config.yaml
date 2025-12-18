@@ -1,0 +1,15 @@
+# GCP Configuration for ChainCopilot Agents
+# Shared across all agents deployed to Vertex AI
+
+gcp:
+  project_id: "mythic-delight-114820"
+  location: "us-west1"
+  staging_bucket: "gs://chaincopilot-agent-staging"
+
+# Agent-specific configurations
+agents:
+  strategy_builder:
+    name: "options-strategy-builder"
+    display_name: "Options Strategy Builder"
+    model: "gemini-2.5-flash"
+    description: "Options strategy builder agent for ChainCopilot"

@@ -21,12 +21,12 @@ export function Footer() {
           {/* Links */}
           <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">
             <a
-              href="https://optchain.app"
+              href="https://github.com/qichaolan/ChainCopilot"
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
             >
-              Live Demo
+              GitHub
             </a>
             <a
               href="mailto:info@optchain.app"

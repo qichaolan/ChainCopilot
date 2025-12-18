@@ -12,6 +12,9 @@ import { getSystemPrompt } from "@/lib/ai/promptLoader";
  * This endpoint handles AI chat requests from CopilotKit components.
  * Uses Google Generative AI (Gemini) as the LLM provider.
  *
+ * NOTE: LEAPS Builder uses direct API calls to /api/leaps, not through CopilotKit.
+ * The remote agent endpoint was removed as it's not needed.
+ *
  * NOTE: We inject system prompts server-side because useCopilotAdditionalInstructions
  * doesn't properly forward to the Google adapter.
  */
@@ -52,7 +55,7 @@ const serviceAdapter = new GoogleGenerativeAIAdapter({
   apiVersion: "v1",
 });
 
-// Create the CopilotKit runtime
+// Create the CopilotKit runtime (no remote agents - LEAPS uses direct API)
 const runtime = new CopilotRuntime();
 
 // Export the handler for Next.js App Router
@@ -74,6 +77,8 @@ export const POST = async (req: NextRequest) => {
 
     // Log original request for debugging
     console.log("[CopilotKit] Original messages count:", body.messages?.length || 0);
+    console.log("[CopilotKit] Actions in request:", body.actions?.map((a: any) => a.name) || 'none');
+    console.log("[CopilotKit] Request keys:", Object.keys(body));
 
     // Inject system prompt into context as high-priority instruction
     if (!body.context) {

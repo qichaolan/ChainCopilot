@@ -47,3 +47,6 @@ coverage/
 # Misc
 *.pem
 .vercel
+
+# Kubernetes secrets (never commit)
+k8s/secrets.yaml

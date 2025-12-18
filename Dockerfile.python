@@ -1,0 +1,37 @@
+# Python FastAPI service for OpenBB options data
+# Runs as a persistent sidecar to avoid Python startup overhead
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install build dependencies for pycurl
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    libcurl4-openssl-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install dependencies
+COPY lib/openbb/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy OpenBB scripts
+COPY lib/openbb/ ./
+
+# Fix OpenBB permissions - it needs to write .build.lock file
+RUN chmod -R 777 /usr/local/lib/python3.12/site-packages/openbb || true
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash appuser
+RUN chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Run the FastAPI server
+CMD ["python", "-m", "uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]

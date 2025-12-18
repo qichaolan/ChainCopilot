@@ -47,8 +47,17 @@ def _get_obb():
         raise ImportError(_openbb_import_error)
 
     try:
-        from openbb import obb as openbb_obb
-        _obb = openbb_obb
+        # Suppress OpenBB's stdout messages during import (e.g., "Extensions loaded...")
+        # These messages pollute JSON output and cause parsing errors
+        import os
+        import io
+        old_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        try:
+            from openbb import obb as openbb_obb
+            _obb = openbb_obb
+        finally:
+            sys.stdout = old_stdout
         return _obb
     except ImportError as e:
         _openbb_import_error = f"openbb package not installed. Run: pip install openbb openbb-cboe openbb-yfinance. Error: {e}"

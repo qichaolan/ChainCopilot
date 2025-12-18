@@ -3,6 +3,9 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { CopilotKit } from "@copilotkit/react-core";
 import "@copilotkit/react-ui/styles.css";
+import { LEAPSBuilderProvider } from "@/components/leaps/LEAPSBuilderContext";
+import { LEAPSBuilderPanel } from "@/components/leaps/LEAPSBuilderPanel";
+import { OptionsChainProvider } from "@/components/dashboard/options-chain/context/OptionsChainContext";
 
 const inter = Inter({
   variable: "--font-geist-sans",
@@ -61,8 +64,16 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} antialiased min-h-screen`}
       >
-        <CopilotKit runtimeUrl="/api/copilotkit" showDevConsole={false}>
-          {children}
+        <CopilotKit
+          runtimeUrl="/api/copilotkit"
+          showDevConsole={false}
+        >
+          <OptionsChainProvider>
+            <LEAPSBuilderProvider>
+              {children}
+              <LEAPSBuilderPanel />
+            </LEAPSBuilderProvider>
+          </OptionsChainProvider>
         </CopilotKit>
       </body>
     </html>

@@ -12,12 +12,17 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   useCopilotReadable,
   useCopilotAdditionalInstructions,
-  useCopilotChatInternal,
+  useCopilotChatSuggestions,
+  useLazyToolRenderer,
 } from '@copilotkit/react-core';
+// @ts-ignore - Internal API for custom chat implementation
+import { useCopilotChatInternal } from '@copilotkit/react-core';
 import { Send, X, Loader2, MessageSquare, Bot, User, PanelRightClose } from 'lucide-react';
 import { COPILOT_INSTRUCTIONS, CHAT_WELCOME_MESSAGE } from '@/lib/ai/prompts';
 import { MessageRenderer } from './MessageRenderer';
 import { useOptionsActions } from './actions/useOptionsActions';
+import { useLeapsActions } from './actions/useLeapsActions';
+import { useOptionsChain } from '@/components/dashboard/options-chain/context/OptionsChainContext';
 
 // ============================================================================
 // Types
@@ -29,6 +34,8 @@ interface OrchestratedMessage {
   content: string;
   status: 'pending' | 'streaming' | 'complete';
   timestamp: number;
+  // Store raw CopilotKit message for action rendering
+  rawMessage?: any;
 }
 
 interface ChatOrchestratorProps {
@@ -73,11 +80,11 @@ function useMessageOrchestrator() {
     return id;
   }, []);
 
-  const updateAssistant = useCallback((id: string, content: string, isComplete: boolean = false) => {
+  const updateAssistant = useCallback((id: string, content: string, isComplete: boolean = false, rawMessage?: any) => {
     setMessages(prev =>
       prev.map(msg =>
         msg.id === id
-          ? { ...msg, content, status: isComplete ? 'complete' : 'streaming' }
+          ? { ...msg, content, status: isComplete ? 'complete' : 'streaming', rawMessage }
           : msg
       )
     );
@@ -117,6 +124,409 @@ function extractCopilotText(msg: any): string {
 }
 
 // ============================================================================
+// Action Renderer - Renders UI based on action name
+// ============================================================================
+
+function renderActionByName(actionName: string, args: any): React.ReactNode {
+  // Parse JSON fields safely
+  const parseJson = (str: string | undefined, fallback: any = []) => {
+    if (!str) return fallback;
+    try {
+      return JSON.parse(str);
+    } catch {
+      return fallback;
+    }
+  };
+
+  switch (actionName) {
+    case 'buildLEAPS': {
+      const data = parseJson(args.dataJson, {});
+      data.symbol = args.symbol;
+      const step = typeof args.step === 'number' ? args.step : 0;
+      return (
+        <div className="my-2 rounded-xl border border-gray-200 dark:border-slate-600 overflow-hidden">
+          <div className="px-3 py-2 bg-gradient-to-r from-indigo-500 to-purple-500 text-white flex items-center gap-2">
+            <span className="font-semibold text-sm">LEAPS Builder - Step {step + 1}</span>
+          </div>
+          <div className="p-3 bg-white dark:bg-slate-800 text-sm">
+            <div className="text-gray-600 dark:text-gray-400">
+              {args.symbol} • {args.direction} • Budget: ${args.capitalBudget || 'Not set'}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    case 'displayLeapsFilter': {
+      const candidates = parseJson(args.candidatesJson, []);
+      return (
+        <div className="my-2 rounded-xl border border-gray-200 dark:border-slate-600 overflow-hidden">
+          <div className="px-3 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white flex items-center gap-2">
+            <span className="font-semibold text-sm">LEAPS Filter Results</span>
+          </div>
+          <div className="p-3 bg-white dark:bg-slate-800">
+            <div className="flex items-center justify-between p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg mb-2">
+              <span className="font-medium text-blue-900 dark:text-blue-100">{args.symbol}</span>
+              <div className="text-sm">
+                <span className="text-green-600 dark:text-green-400 font-medium">{args.passedCount} passed</span>
+                <span className="text-gray-400 mx-2">|</span>
+                <span className="text-gray-500">{args.excludedCount} excluded</span>
+              </div>
+            </div>
+            {candidates.length > 0 && (
+              <div className="space-y-1 max-h-40 overflow-y-auto">
+                {candidates.slice(0, 5).map((c: any, i: number) => (
+                  <div key={i} className="p-2 bg-gray-50 dark:bg-slate-700/50 rounded text-xs">
+                    <div className="flex justify-between">
+                      <span className="font-mono">{c.contract?.contractSymbol?.slice(-15)}</span>
+                      <span>{c.contract?.dte} DTE</span>
+                    </div>
+                    <div className="text-gray-500 mt-1">
+                      Strike: ${c.contract?.strike} • Delta: {c.contract?.delta?.toFixed(2)} • Mark: ${c.contract?.mark?.toFixed(2)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    case 'displayLeapsRanking': {
+      const candidates = parseJson(args.candidatesJson, []);
+      return (
+        <div className="my-2 rounded-xl border border-gray-200 dark:border-slate-600 overflow-hidden">
+          <div className="px-3 py-2 bg-gradient-to-r from-yellow-500 to-orange-500 text-white flex items-center gap-2">
+            <span className="font-semibold text-sm">LEAPS Ranking</span>
+          </div>
+          <div className="p-3 bg-white dark:bg-slate-800">
+            <div className="space-y-2">
+              {candidates.slice(0, 5).map((c: any, idx: number) => (
+                <div key={idx} className={`p-2 rounded-lg border ${idx === 0 ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200' : 'bg-gray-50 dark:bg-slate-700/50 border-gray-200 dark:border-slate-600'}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${idx === 0 ? 'bg-yellow-500 text-white' : 'bg-gray-200 text-gray-600'}`}>{idx + 1}</span>
+                      <span className="font-medium text-sm">${c.contract?.strike} {c.contract?.optionType}</span>
+                    </div>
+                    <span className="text-sm font-bold text-blue-600">{c.overallScore?.toFixed(1)} pts</span>
+                  </div>
+                  {c.scores && (
+                    <div className="grid grid-cols-4 gap-1 text-xs text-center">
+                      <div><span className="text-gray-500">Theta:</span> {c.scores.thetaEfficiency?.toFixed(0)}</div>
+                      <div><span className="text-gray-500">Delta:</span> {c.scores.deltaProbability?.toFixed(0)}</div>
+                      <div><span className="text-gray-500">Liquid:</span> {c.scores.liquidity?.toFixed(0)}</div>
+                      <div><span className="text-gray-500">R/R:</span> {c.scores.riskReward?.toFixed(0)}</div>
+                    </div>
+                  )}
+                  {c.why?.[0] && <div className="text-xs text-green-600 mt-1">✓ {c.why[0]}</div>}
+                  {c.riskFlags?.[0] && <div className="text-xs text-amber-600 mt-1">⚠ {c.riskFlags[0]}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    case 'displayLeapsPayoff': {
+      const simulations = parseJson(args.simulationsJson, []);
+      return (
+        <div className="my-2 rounded-xl border border-gray-200 dark:border-slate-600 overflow-hidden">
+          <div className="px-3 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center gap-2">
+            <span className="font-semibold text-sm">Payoff Simulation</span>
+          </div>
+          <div className="p-3 bg-white dark:bg-slate-800">
+            {simulations.slice(0, 3).map((sim: any, idx: number) => (
+              <div key={idx} className="p-2 bg-gray-50 dark:bg-slate-700/50 rounded-lg mb-2">
+                <div className="flex justify-between mb-2">
+                  <span className="font-medium text-sm">#{sim.rank} ${sim.contract?.strike} {sim.contract?.optionType}</span>
+                  <span className="text-xs text-gray-500">Cost: ${sim.payoff?.costBasis?.toFixed(0)}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs mb-2">
+                  <div className="p-1.5 bg-white dark:bg-slate-800 rounded text-center">
+                    <div className="text-gray-500">Breakeven</div>
+                    <div className="font-bold">${sim.payoff?.breakeven?.toFixed(2)}</div>
+                  </div>
+                  <div className="p-1.5 bg-white dark:bg-slate-800 rounded text-center">
+                    <div className="text-gray-500">Max Loss</div>
+                    <div className="font-bold text-red-600">${sim.payoff?.maxLoss?.toFixed(0)}</div>
+                  </div>
+                  <div className="p-1.5 bg-white dark:bg-slate-800 rounded text-center">
+                    <div className="text-gray-500">Expected Profit</div>
+                    <div className="font-bold text-green-600">
+                      {(sim.expectedProfit?.expectedProfitUsd ?? sim.candidate?.expectedProfit?.expectedProfitUsd) != null
+                        ? `$${(sim.expectedProfit?.expectedProfitUsd ?? sim.candidate?.expectedProfit?.expectedProfitUsd)?.toFixed(0)}`
+                        : sim.payoff?.maxProfit === 'unlimited' ? '∞' : `$${sim.payoff?.maxProfit}`}
+                    </div>
+                  </div>
+                </div>
+                {sim.scenarios && (
+                  <div className="flex gap-1 flex-wrap">
+                    {sim.scenarios.slice(0, 5).map((s: any, sIdx: number) => (
+                      <span key={sIdx} className={`px-1.5 py-0.5 rounded text-xs ${s.pnl >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        {s.move}: {s.roi >= 0 ? '+' : ''}{s.roi?.toFixed(0)}%
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    case 'displayLeapsRisk': {
+      const warnings = parseJson(args.warningsJson, []);
+      const recommendations = parseJson(args.recommendationsJson, []);
+      const riskColorMap: Record<string, string> = {
+        low: 'bg-green-100 text-green-700',
+        moderate: 'bg-yellow-100 text-yellow-700',
+        high: 'bg-orange-100 text-orange-700',
+        critical: 'bg-red-100 text-red-700',
+      };
+      const riskColor = riskColorMap[args.riskLevel as string] || 'bg-gray-100 text-gray-700';
+
+      return (
+        <div className="my-2 rounded-xl border border-gray-200 dark:border-slate-600 overflow-hidden">
+          <div className="px-3 py-2 bg-gradient-to-r from-slate-500 to-slate-700 text-white flex items-center gap-2">
+            <span className="font-semibold text-sm">Risk Assessment</span>
+          </div>
+          <div className="p-3 bg-white dark:bg-slate-800">
+            <div className="flex items-center justify-between p-2 bg-slate-100 dark:bg-slate-700 rounded-lg mb-2">
+              <span className="font-medium">{args.symbol}</span>
+              <span className={`px-2 py-0.5 rounded-full text-xs font-medium uppercase ${riskColor}`}>{args.riskLevel}</span>
+            </div>
+            {args.ivRank !== undefined && (
+              <div className="p-2 bg-gray-50 dark:bg-slate-700/50 rounded-lg mb-2">
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-gray-500">IV Rank</span>
+                  <span className="font-bold">{args.ivRank}%</span>
+                </div>
+                <div className="w-full h-1.5 bg-gray-200 rounded-full">
+                  <div className={`h-full rounded-full ${args.ivRank < 30 ? 'bg-green-500' : args.ivRank < 70 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${args.ivRank}%` }} />
+                </div>
+              </div>
+            )}
+            {warnings.length > 0 && (
+              <div className="space-y-1 mb-2">
+                <span className="text-xs font-medium text-gray-500 uppercase">Warnings</span>
+                {warnings.map((w: string, i: number) => (
+                  <div key={i} className="flex items-start gap-1.5 p-1.5 bg-amber-50 dark:bg-amber-900/20 rounded text-xs text-amber-700">
+                    <span>⚠</span><span>{w}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {recommendations.length > 0 && (
+              <div className="space-y-1">
+                <span className="text-xs font-medium text-gray-500 uppercase">Recommendations</span>
+                {recommendations.map((r: string, i: number) => (
+                  <div key={i} className="flex items-start gap-1.5 p-1.5 bg-blue-50 dark:bg-blue-900/20 rounded text-xs text-blue-700">
+                    <span>→</span><span>{r}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    case 'displayAnalysis': {
+      const sections = parseJson(args.sectionsJson, []);
+      return (
+        <div className="my-2 rounded-xl border border-gray-200 dark:border-slate-600 overflow-hidden">
+          <div className="px-3 py-2 bg-gradient-to-r from-green-500 to-teal-500 text-white">
+            <span className="font-semibold text-sm">{args.title || 'Analysis'}</span>
+          </div>
+          <div className="p-3 bg-white dark:bg-slate-800">
+            {sections.map((section: any, i: number) => (
+              <div key={i} className="mb-2">
+                <div className="font-medium text-sm text-gray-700 dark:text-gray-300">{section.heading}</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">{section.content}</div>
+              </div>
+            ))}
+            {args.recommendation && (
+              <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-sm text-blue-700 dark:text-blue-300">
+                <strong>Recommendation:</strong> {args.recommendation}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    case 'displayMetrics':
+    case 'displayStrategy':
+    default:
+      // Generic fallback for other actions
+      return (
+        <div className="my-2 p-3 rounded-lg border bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
+          <div className="flex items-center gap-2 text-sm mb-2">
+            <span className="w-4 h-4 rounded-full bg-green-500 flex items-center justify-center text-white text-xs">✓</span>
+            <span className="font-medium text-green-700 dark:text-green-300">{actionName}</span>
+          </div>
+          {args.title && <div className="font-semibold text-gray-800 dark:text-gray-200 mb-1">{args.title}</div>}
+          {args.symbol && <div className="text-sm text-gray-600 dark:text-gray-400">Symbol: {args.symbol}</div>}
+        </div>
+      );
+  }
+}
+
+// ============================================================================
+// Action Content Renderer
+// ============================================================================
+
+/**
+ * Extracts and renders action results from CopilotKit message content.
+ * Uses CopilotKit's lazy tool renderer to properly render action UI.
+ */
+function ActionContentRenderer({
+  rawMessage,
+  allMessages,
+  getToolRenderer
+}: {
+  rawMessage: any;
+  allMessages: any[];
+  getToolRenderer: (message?: any, messages?: any[]) => (() => React.ReactElement | null) | null;
+}) {
+  if (!rawMessage) return null;
+
+  // Use CopilotKit's lazy tool renderer to get the render function
+  const renderToolCall = getToolRenderer(rawMessage, allMessages);
+
+  if (renderToolCall) {
+    // Call the render function to get the actual React element
+    const rendered = renderToolCall();
+    if (rendered) {
+      return <div className="mt-2">{rendered}</div>;
+    }
+  }
+
+  // Check for toolCalls field (CopilotKit's format for action invocations)
+  if (rawMessage.toolCalls && Array.isArray(rawMessage.toolCalls)) {
+    return (
+      <div className="space-y-2 mt-2">
+        {rawMessage.toolCalls.map((toolCall: any, idx: number) => {
+          const functionName = toolCall.function?.name || toolCall.name || 'unknown';
+          let args: any = {};
+          try {
+            args = typeof toolCall.function?.arguments === 'string'
+              ? JSON.parse(toolCall.function.arguments)
+              : toolCall.function?.arguments || toolCall.args || {};
+          } catch {
+            args = {};
+          }
+
+          // Render based on the action name
+          return (
+            <div key={toolCall.id || idx}>
+              {renderActionByName(functionName, args)}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // Fallback: Check content array for action data
+  const content = rawMessage.content;
+  let actionParts: any[] = [];
+
+  if (Array.isArray(content)) {
+    actionParts = content.filter((part: any) => {
+      if (!part) return false;
+      const type = part.type?.toLowerCase() || '';
+      return (
+        type.includes('action') ||
+        type.includes('tool') ||
+        type.includes('function') ||
+        type === 'ui' ||
+        part.name ||
+        part.actionName ||
+        part.toolName
+      );
+    });
+  }
+
+  // Check for inProgress actions
+  if (rawMessage.inProgressGeneration?.action) {
+    actionParts.push({
+      ...rawMessage.inProgressGeneration.action,
+      status: 'executing'
+    });
+  }
+
+  // Check for completed action results
+  if (rawMessage.actionResults) {
+    actionParts = actionParts.concat(
+      Object.values(rawMessage.actionResults).map((r: any) => ({
+        ...r,
+        status: 'complete'
+      }))
+    );
+  }
+
+  if (actionParts.length === 0) return null;
+
+  return (
+    <div className="space-y-2 mt-2">
+      {actionParts.map((part: any, idx: number) => {
+        if (React.isValidElement(part.render)) {
+          return <div key={idx}>{part.render}</div>;
+        }
+        if (React.isValidElement(part.component)) {
+          return <div key={idx}>{part.component}</div>;
+        }
+
+        const actionName = part.name || part.actionName || part.toolName || 'unknown';
+        const status = part.status || (part.result ? 'complete' : 'executing');
+        const args = part.args || part.arguments || {};
+        const result = part.result;
+
+        return (
+          <div
+            key={idx}
+            className={`p-3 rounded-lg border ${
+              status === 'executing'
+                ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 animate-pulse'
+                : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+            }`}
+          >
+            <div className="flex items-center gap-2 text-sm">
+              {status === 'executing' ? (
+                <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+              ) : (
+                <span className="w-4 h-4 rounded-full bg-green-500 flex items-center justify-center text-white text-xs">✓</span>
+              )}
+              <span className={`font-medium ${status === 'executing' ? 'text-blue-700 dark:text-blue-300' : 'text-green-700 dark:text-green-300'}`}>
+                {actionName}
+              </span>
+              {args.symbol && (
+                <span className="text-xs bg-white dark:bg-slate-700 px-2 py-0.5 rounded">
+                  {args.symbol}
+                </span>
+              )}
+            </div>
+            {result && (
+              <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                {typeof result === 'object' ? (
+                  <pre className="overflow-x-auto">{JSON.stringify(result, null, 2)}</pre>
+                ) : (
+                  String(result)
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ============================================================================
 // Floating Toggle Button (shown when chat is closed on mobile)
 // ============================================================================
 
@@ -147,6 +557,9 @@ interface ChatPanelContentProps {
   messagesEndRef: React.RefObject<HTMLDivElement>;
   onClose: () => void;
   mode: 'docked' | 'overlay';
+  // For rendering CopilotKit action content
+  copilotMessages: any[];
+  getToolRenderer: (message?: any, messages?: any[]) => (() => React.ReactElement | null) | null;
 }
 
 function ChatPanelContent({
@@ -160,6 +573,8 @@ function ChatPanelContent({
   messagesEndRef,
   onClose,
   mode,
+  copilotMessages,
+  getToolRenderer,
 }: ChatPanelContentProps) {
   return (
     <>
@@ -231,6 +646,15 @@ function ChatPanelContent({
                 </div>
               ) : null}
 
+              {/* Render action content from raw CopilotKit message */}
+              {message.role === 'assistant' && message.rawMessage && (
+                <ActionContentRenderer
+                  rawMessage={message.rawMessage}
+                  allMessages={copilotMessages}
+                  getToolRenderer={getToolRenderer}
+                />
+              )}
+
               {message.status === 'streaming' && message.content && (
                 <span className="inline-block w-1 h-4 ml-0.5 bg-current animate-pulse" />
               )}
@@ -285,6 +709,7 @@ export function ChatOrchestrator({ isOpen, onOpenChange, mode }: ChatOrchestrato
   const sendStartIndexRef = useRef<number>(0);
   const contentSnapshotRef = useRef<string>('');
   const currentResponseRef = useRef<string>('');
+  const lastProcessedMsgIdRef = useRef<string | null>(null);
 
   const [openTime] = useState(() => new Date().toISOString());
 
@@ -296,9 +721,36 @@ export function ChatOrchestrator({ isOpen, onOpenChange, mode }: ChatOrchestrato
     finalizeAssistant,
   } = useMessageOrchestrator();
 
+  // Get options chain context for AI awareness
+  const { chainSummary, selectedContracts } = useOptionsChain();
+
   useCopilotReadable({
     description: 'Current date and time for context',
     value: openTime,
+  });
+
+  // Expose current options chain view to AI
+  useCopilotReadable({
+    description: 'User current options chain view - what symbol, expiration, and contracts they are looking at',
+    value: chainSummary ? {
+      symbol: chainSummary.symbol,
+      underlyingPrice: chainSummary.underlyingPrice,
+      currentExpiration: chainSummary.currentExpiration,
+      currentExpirationDte: chainSummary.currentExpirationDte,
+      isViewingLeaps: chainSummary.isViewingLeaps,
+      leapsExpirations: chainSummary.leapsExpirations,
+      totalCalls: chainSummary.totalCalls,
+      totalPuts: chainSummary.totalPuts,
+      selectedContractsCount: selectedContracts.length,
+      selectedContracts: selectedContracts.map(c => ({
+        symbol: c.contractSymbol,
+        strike: c.strike,
+        expiration: c.expiration,
+        type: c.optionType,
+        delta: c.delta,
+        dte: c.dte,
+      })),
+    } : null,
   });
 
   useCopilotAdditionalInstructions({
@@ -306,8 +758,12 @@ export function ChatOrchestrator({ isOpen, onOpenChange, mode }: ChatOrchestrato
   });
 
   useOptionsActions();
+  useLeapsActions();
 
   const { messages: copilotMessages, sendMessage, isLoading } = useCopilotChatInternal();
+
+  // Get the lazy tool renderer for rendering action/tool calls
+  const getToolRenderer = useLazyToolRenderer();
 
   // --- Sync CopilotKit -> Orchestrated UI ---
   useEffect(() => {
@@ -332,15 +788,30 @@ export function ChatOrchestrator({ isOpen, onOpenChange, mode }: ChatOrchestrato
         newContent = '';
       }
 
+      // Get the latest assistant message for raw content (including action renders)
+      const latestAssistant = allAssistants.length > 0 ? allAssistants[allAssistants.length - 1] : null;
+
+      // Check if there are toolCalls even without text content
+      const hasToolCalls = latestAssistant?.toolCalls && latestAssistant.toolCalls.length > 0;
+      const latestMsgId = latestAssistant?.id;
+      const alreadyProcessed = latestMsgId && latestMsgId === lastProcessedMsgIdRef.current;
+
       if (newContent && newContent !== currentResponseRef.current) {
         currentResponseRef.current = newContent;
-        updateAssistant(assistantId, newContent, false);
+        updateAssistant(assistantId, newContent, false, latestAssistant);
+      } else if (hasToolCalls && !alreadyProcessed && !currentResponseRef.current) {
+        // AI responded with only tool calls, no text - still update with rawMessage (only once)
+        lastProcessedMsgIdRef.current = latestMsgId;
+        updateAssistant(assistantId, '', false, latestAssistant);
       }
 
-      if (!isLoading && currentResponseRef.current) {
-        finalizeAssistant(assistantId);
+      // Finalize when loading is done - check for content OR toolCalls
+      if (!isLoading && (currentResponseRef.current || hasToolCalls)) {
+        // Pass the latest raw message when finalizing
+        updateAssistant(assistantId, currentResponseRef.current || '', true, latestAssistant);
         currentAssistantIdRef.current = null;
         currentResponseRef.current = '';
+        lastProcessedMsgIdRef.current = null;
         setInFlight(false);
         return true;
       }
@@ -411,13 +882,15 @@ export function ChatOrchestrator({ isOpen, onOpenChange, mode }: ChatOrchestrato
       const assistantId = createAssistantPlaceholder();
       currentAssistantIdRef.current = assistantId;
       currentResponseRef.current = '';
+      lastProcessedMsgIdRef.current = null;
 
       try {
+        // sendMessage expects a Message object in useCopilotChatInternal
         await sendMessage({
           id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
           role: 'user',
           content: text,
-        });
+        } as any);
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         updateAssistant(assistantId, `Error: ${errorMsg}`, true);
@@ -480,6 +953,8 @@ export function ChatOrchestrator({ isOpen, onOpenChange, mode }: ChatOrchestrato
           messagesEndRef={messagesEndRef}
           onClose={() => onOpenChange(false)}
           mode="docked"
+          copilotMessages={(copilotMessages ?? []) as any[]}
+          getToolRenderer={getToolRenderer}
         />
       </div>
     );
@@ -511,6 +986,8 @@ export function ChatOrchestrator({ isOpen, onOpenChange, mode }: ChatOrchestrato
           messagesEndRef={messagesEndRef}
           onClose={() => onOpenChange(false)}
           mode="overlay"
+          copilotMessages={(copilotMessages ?? []) as any[]}
+          getToolRenderer={getToolRenderer}
         />
       </div>
     </div>

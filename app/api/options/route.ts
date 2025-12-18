@@ -13,6 +13,66 @@ import {
 // Re-export types for backward compatibility
 export type { RawOptionsContract as OptionsContract, OptionsChainResult, ExpirationDatesResult };
 
+// Python service URL - use sidecar in production, localhost in development
+const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL || "http://localhost:8000";
+
+// In-memory cache with TTL (5 minutes)
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const cache = new Map<string, { data: string; timestamp: number }>();
+
+function getCached(key: string): string | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    cache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function setCache(key: string, data: string): void {
+  cache.set(key, { data, timestamp: Date.now() });
+}
+
+/**
+ * Fetch options data from the Python FastAPI service.
+ * Falls back to spawning Python script if service is unavailable.
+ */
+async function fetchFromPythonService(
+  ticker: string,
+  expiration?: string,
+  all?: boolean
+): Promise<string> {
+  const params = new URLSearchParams({ ticker });
+
+  if (all) {
+    params.set("all", "true");
+  } else if (expiration) {
+    params.set("expiration", expiration);
+  } else {
+    params.set("include_first", "true");
+  }
+
+  const url = `${PYTHON_SERVICE_URL}/options?${params.toString()}`;
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: { "Accept": "application/json" },
+    // 90 second timeout for slow API calls
+    signal: AbortSignal.timeout(90000),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(error.detail || `HTTP ${response.status}`);
+  }
+
+  return response.text();
+}
+
+/**
+ * Fallback: spawn Python script directly (slower, for development/debugging).
+ */
 function runPythonScript(args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     const projectRoot = process.cwd();
@@ -44,6 +104,34 @@ function runPythonScript(args: string[]): Promise<string> {
       reject(new Error(`Failed to start Python script: ${err.message}`));
     });
   });
+}
+
+/**
+ * Get options data - tries HTTP service first, falls back to spawn.
+ */
+async function getOptionsData(
+  ticker: string,
+  expiration?: string,
+  all?: boolean
+): Promise<string> {
+  // Try the FastAPI service first (fast path)
+  try {
+    return await fetchFromPythonService(ticker, expiration, all);
+  } catch (serviceError) {
+    console.warn("Python service unavailable, falling back to spawn:", serviceError);
+  }
+
+  // Fallback to spawning Python script (slow path)
+  const args = [ticker];
+  if (all) {
+    args.push("--all");
+  } else if (expiration) {
+    args.push(expiration);
+  } else {
+    args.push("--include-first");
+  }
+
+  return runPythonScript(args);
 }
 
 export async function GET(request: NextRequest) {
@@ -78,20 +166,32 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const args = [ticker];
+    // Build cache key
+    const cacheKey = all === "true"
+      ? `${ticker}:--all`
+      : expiration
+        ? `${ticker}:${expiration}`
+        : `${ticker}:--include-first`;
 
-    // Batch mode: get ALL contracts for all expirations (for heatmap)
-    if (all === "true") {
-      args.push("--all");
-    } else if (expiration) {
-      args.push(expiration);
-    } else {
-      // Initial search: include first expiration's contracts to avoid second API call
-      args.push("--include-first");
+    // Check cache first
+    const cached = getCached(cacheKey);
+    if (cached) {
+      const result = JSON.parse(cached);
+      return NextResponse.json(result);
     }
 
-    const output = await runPythonScript(args);
+    // Fetch from Python service (or fallback to spawn)
+    const output = await getOptionsData(
+      ticker,
+      expiration || undefined,
+      all === "true"
+    );
     const result = JSON.parse(output);
+
+    // Cache successful results
+    if (!result.error) {
+      setCache(cacheKey, output);
+    }
 
     if (result.error) {
       return NextResponse.json(result, { status: 404 });
