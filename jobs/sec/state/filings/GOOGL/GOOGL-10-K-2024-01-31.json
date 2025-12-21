@@ -1,0 +1,19 @@
+{
+  "cik": "0001652044",
+  "accession_number": "0001652044-24-000022",
+  "form_type": "10-K",
+  "company_name": "Alphabet Inc.",
+  "ticker": "GOOGL",
+  "filed_at": "2024-01-31T00:00:00",
+  "accepted_at": "2024-01-30T21:43:43+00:00",
+  "period_of_report": "2023-12-31",
+  "status": "ready",
+  "discovered_at": "2025-12-19T05:55:31.280749",
+  "processed_at": "2025-12-19T05:56:46.886809",
+  "error_message": null,
+  "retry_count": 0,
+  "filing_url": "https://www.sec.gov/Archives/edgar/data/1652044/000165204424000022/goog-20231231.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/1652044/000165204424000022/0001652044-24-000022-index.html",
+  "json_path": "GOOGL/GOOGL-10-K-2024-01-31.json",
+  "pdf_path": null
+}

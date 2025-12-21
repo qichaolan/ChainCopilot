@@ -1,0 +1,19 @@
+{
+  "cik": "0000006951",
+  "accession_number": "0000006951-25-000037",
+  "form_type": "10-Q",
+  "company_name": "APPLIED MATERIALS INC /DE",
+  "ticker": "AMAT",
+  "filed_at": "2025-08-21T00:00:00",
+  "accepted_at": "2025-08-21T16:02:16+00:00",
+  "period_of_report": "2025-07-27",
+  "status": "ready",
+  "discovered_at": "2025-12-19T05:55:26.215495",
+  "processed_at": "2025-12-19T05:56:17.559288",
+  "error_message": null,
+  "retry_count": 0,
+  "filing_url": "https://www.sec.gov/Archives/edgar/data/6951/000000695125000037/amat-20250727.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/6951/000000695125000037/0000006951-25-000037-index.html",
+  "json_path": "AMAT/AMAT-10-Q-2025-08-21.json",
+  "pdf_path": null
+}

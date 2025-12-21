@@ -21,7 +21,6 @@ import { Send, X, Loader2, MessageSquare, Bot, User, PanelRightClose } from 'luc
 import { COPILOT_INSTRUCTIONS, CHAT_WELCOME_MESSAGE } from '@/lib/ai/prompts';
 import { MessageRenderer } from './MessageRenderer';
 import { useOptionsActions } from './actions/useOptionsActions';
-import { useLeapsActions } from './actions/useLeapsActions';
 import { useOptionsChain } from '@/components/dashboard/options-chain/context/OptionsChainContext';
 
 // ============================================================================
@@ -209,7 +208,7 @@ function renderActionByName(actionName: string, args: any): React.ReactNode {
                       <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${idx === 0 ? 'bg-yellow-500 text-white' : 'bg-gray-200 text-gray-600'}`}>{idx + 1}</span>
                       <span className="font-medium text-sm">${c.contract?.strike} {c.contract?.optionType}</span>
                     </div>
-                    <span className="text-sm font-bold text-blue-600">{c.overallScore?.toFixed(1)} pts</span>
+                    <span className="text-sm font-bold text-blue-600">{((c.overallScore ?? 0) / 100).toFixed(2)}</span>
                   </div>
                   {c.scores && (
                     <div className="grid grid-cols-4 gap-1 text-xs text-center">
@@ -237,27 +236,40 @@ function renderActionByName(actionName: string, args: any): React.ReactNode {
             <span className="font-semibold text-sm">Payoff Simulation</span>
           </div>
           <div className="p-3 bg-white dark:bg-slate-800">
-            {simulations.slice(0, 3).map((sim: any, idx: number) => (
+            {simulations.slice(0, 3).map((sim: any, idx: number) => {
+              const candidate = sim.candidate;
+              const breakeven = Array.isArray(candidate?.breakeven) ? candidate.breakeven[0] : candidate?.breakeven;
+              return (
               <div key={idx} className="p-2 bg-gray-50 dark:bg-slate-700/50 rounded-lg mb-2">
                 <div className="flex justify-between mb-2">
-                  <span className="font-medium text-sm">#{sim.rank} ${sim.contract?.strike} {sim.contract?.optionType}</span>
-                  <span className="text-xs text-gray-500">Cost: ${sim.payoff?.costBasis?.toFixed(0)}</span>
+                  <span className="font-medium text-sm">#{idx + 1} ${candidate?.legs?.[0]?.contract?.strike} {candidate?.legs?.[0]?.contract?.optionType}</span>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-xs mb-2">
+                <div className="grid grid-cols-2 gap-2 text-xs mb-2">
                   <div className="p-1.5 bg-white dark:bg-slate-800 rounded text-center">
                     <div className="text-gray-500">Breakeven</div>
-                    <div className="font-bold">${sim.payoff?.breakeven?.toFixed(2)}</div>
+                    <div className="font-bold">${breakeven?.toFixed(2)}</div>
                   </div>
                   <div className="p-1.5 bg-white dark:bg-slate-800 rounded text-center">
                     <div className="text-gray-500">Max Loss</div>
-                    <div className="font-bold text-red-600">${sim.payoff?.maxLoss?.toFixed(0)}</div>
+                    <div className="font-bold text-red-600">${Math.abs(candidate?.maxLoss ?? 0).toFixed(0)}</div>
                   </div>
-                  <div className="p-1.5 bg-white dark:bg-slate-800 rounded text-center">
+                  <div className="p-1.5 bg-blue-50 dark:bg-blue-900/20 rounded text-center">
+                    <div className="text-gray-500">Expected Move</div>
+                    <div className="font-bold text-blue-600">
+                      {candidate?.expectedProfit?.horizonMovePct != null
+                        ? `+${candidate.expectedProfit.horizonMovePct.toFixed(1)}%`
+                        : 'N/A'}
+                    </div>
+                    {candidate?.expectedProfit?.expectedPriceAtExpiry != null && (
+                      <div className="text-[10px] text-blue-400">→ ${candidate.expectedProfit.expectedPriceAtExpiry.toFixed(0)}</div>
+                    )}
+                  </div>
+                  <div className="p-1.5 bg-green-50 dark:bg-green-900/20 rounded text-center">
                     <div className="text-gray-500">Expected Profit</div>
                     <div className="font-bold text-green-600">
-                      {(sim.expectedProfit?.expectedProfitUsd ?? sim.candidate?.expectedProfit?.expectedProfitUsd) != null
-                        ? `$${(sim.expectedProfit?.expectedProfitUsd ?? sim.candidate?.expectedProfit?.expectedProfitUsd)?.toFixed(0)}`
-                        : sim.payoff?.maxProfit === 'unlimited' ? '∞' : `$${sim.payoff?.maxProfit}`}
+                      {candidate?.expectedProfit?.expectedProfitUsd != null
+                        ? `$${candidate.expectedProfit.expectedProfitUsd.toFixed(0)}`
+                        : candidate?.maxProfit === 'unlimited' ? '∞' : `$${candidate?.maxProfit}`}
                     </div>
                   </div>
                 </div>
@@ -271,7 +283,8 @@ function renderActionByName(actionName: string, args: any): React.ReactNode {
                   </div>
                 )}
               </div>
-            ))}
+            );
+            })}
           </div>
         </div>
       );
@@ -758,7 +771,6 @@ export function ChatOrchestrator({ isOpen, onOpenChange, mode }: ChatOrchestrato
   });
 
   useOptionsActions();
-  useLeapsActions();
 
   const { messages: copilotMessages, sendMessage, isLoading } = useCopilotChatInternal();
 

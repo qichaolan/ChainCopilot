@@ -1,0 +1,19 @@
+{
+  "cik": "0000707549",
+  "accession_number": "0000707549-25-000075",
+  "form_type": "10-K",
+  "company_name": "LAM RESEARCH CORP",
+  "ticker": "LRCX",
+  "filed_at": "2025-08-11T00:00:00",
+  "accepted_at": "2025-08-11T16:35:11+00:00",
+  "period_of_report": "2025-06-29",
+  "status": "ready",
+  "discovered_at": "2025-12-19T05:55:25.195095",
+  "processed_at": "2025-12-19T05:56:12.585611",
+  "error_message": null,
+  "retry_count": 0,
+  "filing_url": "https://www.sec.gov/Archives/edgar/data/707549/000070754925000075/lrcx-20250629.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/707549/000070754925000075/0000707549-25-000075-index.html",
+  "json_path": "LRCX/LRCX-10-K-2025-08-11.json",
+  "pdf_path": null
+}

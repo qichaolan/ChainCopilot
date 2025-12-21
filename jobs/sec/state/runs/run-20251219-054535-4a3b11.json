@@ -1,0 +1,13 @@
+{
+  "run_id": "run-20251219-054535-4a3b11",
+  "started_at": "2025-12-19T05:45:35.480598",
+  "completed_at": "2025-12-19T05:45:36.235058",
+  "mode": "default",
+  "backfill_years": null,
+  "companies_processed": 1,
+  "filings_discovered": 0,
+  "filings_downloaded": 0,
+  "filings_failed": 0,
+  "success": true,
+  "error_message": null
+}

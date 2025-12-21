@@ -1,0 +1,19 @@
+{
+  "cik": "0000320193",
+  "accession_number": "0000320193-21-000105",
+  "form_type": "10-K",
+  "company_name": "Apple Inc.",
+  "ticker": "AAPL",
+  "filed_at": "2021-10-29T00:00:00",
+  "accepted_at": "2021-10-28T18:04:28+00:00",
+  "period_of_report": "2021-09-25",
+  "status": "ready",
+  "discovered_at": "2025-12-19T05:55:18.503502",
+  "processed_at": "2025-12-19T05:55:41.292748",
+  "error_message": null,
+  "retry_count": 0,
+  "filing_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019321000105/aapl-20210925.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019321000105/0000320193-21-000105-index.html",
+  "json_path": "AAPL/AAPL-10-K-2021-10-29.json",
+  "pdf_path": null
+}

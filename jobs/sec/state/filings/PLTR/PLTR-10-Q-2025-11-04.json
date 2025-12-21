@@ -1,0 +1,19 @@
+{
+  "cik": "0001321655",
+  "accession_number": "0001321655-25-000131",
+  "form_type": "10-Q",
+  "company_name": "Palantir Technologies Inc.",
+  "ticker": "PLTR",
+  "filed_at": "2025-11-04T00:00:00",
+  "accepted_at": "2025-11-03T22:58:45+00:00",
+  "period_of_report": "2025-09-30",
+  "status": "ready",
+  "discovered_at": "2025-12-19T05:55:21.178155",
+  "processed_at": "2025-12-19T05:55:52.387458",
+  "error_message": null,
+  "retry_count": 0,
+  "filing_url": "https://www.sec.gov/Archives/edgar/data/1321655/000132165525000131/pltr-20250930.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/1321655/000132165525000131/0001321655-25-000131-index.html",
+  "json_path": "PLTR/PLTR-10-Q-2025-11-04.json",
+  "pdf_path": null
+}

@@ -44,9 +44,8 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY lib/openbb ./lib/openbb
 RUN pip3 install --no-cache-dir --break-system-packages -r lib/openbb/requirements.txt
 
-# Copy LEAPS CoAgent and install dependencies
+# Copy agents directory (strategy_agent etc)
 COPY agents ./agents
-RUN pip3 install --no-cache-dir --break-system-packages -r agents/leaps_coagent/requirements.txt
 
 # Create .venv symlink for the Python script path
 RUN mkdir -p .venv/bin && ln -s /usr/bin/python3 .venv/bin/python
@@ -64,7 +63,6 @@ RUN chown -R nextjs:nodejs /app
 USER nextjs
 
 EXPOSE 3000
-EXPOSE 8000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"

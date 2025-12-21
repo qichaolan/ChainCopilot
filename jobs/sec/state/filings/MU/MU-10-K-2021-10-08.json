@@ -1,0 +1,19 @@
+{
+  "cik": "0000723125",
+  "accession_number": "0000723125-21-000065",
+  "form_type": "10-K",
+  "company_name": "MICRON TECHNOLOGY INC",
+  "ticker": "MU",
+  "filed_at": "2021-10-08T00:00:00",
+  "accepted_at": "2021-10-08T17:23:24+00:00",
+  "period_of_report": "2021-09-02",
+  "status": "ready",
+  "discovered_at": "2025-12-19T05:55:24.236891",
+  "processed_at": "2025-12-19T05:56:11.605335",
+  "error_message": null,
+  "retry_count": 0,
+  "filing_url": "https://www.sec.gov/Archives/edgar/data/723125/000072312521000065/mu-20210902.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/723125/000072312521000065/0000723125-21-000065-index.html",
+  "json_path": "MU/MU-10-K-2021-10-08.json",
+  "pdf_path": null
+}

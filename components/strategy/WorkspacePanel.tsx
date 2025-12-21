@@ -691,12 +691,6 @@ interface CandidatesTableProps {
 }
 
 function CandidatesComparisonTable({ candidates, selectedIds, onToggle, spotPrice }: CandidatesTableProps) {
-  const formatMoney = (value: number | string) => {
-    if (value === 'unlimited') return '∞';
-    const num = typeof value === 'number' ? value : parseFloat(value);
-    return `$${Math.abs(num).toLocaleString()}`;
-  };
-
   return (
     <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
       <div className="overflow-x-auto">
@@ -710,8 +704,8 @@ function CandidatesComparisonTable({ candidates, selectedIds, onToggle, spotPric
               <th className="px-2 py-2.5 text-left font-semibold text-slate-700 dark:text-slate-200">Strategy</th>
               <th className="px-2 py-2.5 text-left font-medium text-slate-500 dark:text-slate-400">Legs</th>
               <th className="px-2 py-2.5 text-right font-medium text-slate-500 dark:text-slate-400">Premium</th>
-              <th className="px-2 py-2.5 text-right font-medium text-slate-500 dark:text-slate-400">Max Loss</th>
               <th className="px-2 py-2.5 text-right font-medium text-slate-500 dark:text-slate-400">Expected Profit</th>
+              <th className="px-2 py-2.5 text-right font-medium text-slate-500 dark:text-slate-400">Expected ROC</th>
               <th className="px-2 py-2.5 text-right font-medium text-slate-500 dark:text-slate-400">Breakeven</th>
               <th className="px-2 py-2.5 text-right font-medium text-slate-500 dark:text-slate-400">Score</th>
             </tr>
@@ -791,23 +785,28 @@ function CandidatesComparisonTable({ candidates, selectedIds, onToggle, spotPric
                   </td>
 
                   {/* Premium */}
-                  <td className="px-2 py-2 text-right font-medium text-slate-700 dark:text-slate-200 whitespace-nowrap">
-                    {formatMoney(candidate.netPremium)}
-                    <span className="ml-0.5 text-[10px] text-slate-400">
-                      {candidate.netPremium > 0 ? 'Dr' : 'Cr'}
-                    </span>
-                  </td>
-
-                  {/* Max Loss */}
-                  <td className="px-2 py-2 text-right font-semibold text-red-600 whitespace-nowrap">
-                    {formatMoney(candidate.maxLoss)}
+                  <td className="px-2 py-2 text-right font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                    ${Math.abs(candidate.maxLoss).toFixed(0)}
                   </td>
 
                   {/* Expected Profit */}
-                  <td className="px-2 py-2 text-right font-semibold text-emerald-600 whitespace-nowrap">
+                  <td className="px-2 py-2 text-right font-semibold text-green-600 whitespace-nowrap">
                     {(candidate as any).expectedProfit?.expectedProfitUsd != null
                       ? `$${(candidate as any).expectedProfit.expectedProfitUsd.toFixed(0)}`
-                      : formatMoney(candidate.maxProfit)}
+                      : 'N/A'}
+                  </td>
+
+                  {/* Expected ROC */}
+                  <td className="px-2 py-2 text-right font-semibold text-purple-600 whitespace-nowrap">
+                    {(() => {
+                      const expectedProfit = (candidate as any).expectedProfit?.expectedProfitUsd;
+                      const premium = Math.abs(candidate.maxLoss);
+                      if (expectedProfit != null && premium > 0) {
+                        const roc = (expectedProfit / premium) * 100;
+                        return `${roc.toFixed(0)}%`;
+                      }
+                      return 'N/A';
+                    })()}
                   </td>
 
                   {/* Breakeven */}
@@ -820,7 +819,7 @@ function CandidatesComparisonTable({ candidates, selectedIds, onToggle, spotPric
                     </span>
                   </td>
 
-                  {/* Score */}
+                  {/* Score (0-1 scale) */}
                   <td className="px-2 py-2 text-right">
                     <span className={`px-1.5 py-0.5 rounded font-bold ${
                       candidate.overallScore >= 70
@@ -829,7 +828,7 @@ function CandidatesComparisonTable({ candidates, selectedIds, onToggle, spotPric
                         ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
                         : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
                     }`}>
-                      {candidate.overallScore.toFixed(0)}
+                      {(candidate.overallScore / 100).toFixed(2)}
                     </span>
                   </td>
                 </tr>
@@ -923,68 +922,93 @@ function ComparisonTable({ simulations, spotPrice }: ComparisonTableProps) {
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
-              <th className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400 w-24">Position</th>
-              {simulations.map((sim, idx) => (
-                <th key={sim.candidate.id} className="px-3 py-2 text-center font-semibold text-slate-700 dark:text-slate-200 min-w-[100px]">
-                  <div className="flex items-center justify-center gap-1.5">
-                    <span className="w-5 h-5 rounded bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] font-bold">
-                      {idx + 1}
-                    </span>
-                    <span className="truncate">{sim.candidate.strategyType.replace(/_/g, ' ')}</span>
+              <th className="px-2 sm:px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400 w-20 sm:w-24 text-[11px] sm:text-xs">Position</th>
+              {simulations.map((sim, idx) => {
+                const leg = sim.candidate.legs?.[0];
+                const contract = leg?.contract;
+                const strike = contract?.strike;
+                const optionType = contract?.optionType;
+                const expiration = contract?.expiration;
+                return (
+                <th key={sim.candidate.id} className="px-2 sm:px-3 py-2 text-center font-semibold text-slate-700 dark:text-slate-200 min-w-[90px] sm:min-w-[120px]">
+                  <div className="flex flex-col items-center gap-0.5">
+                    <div className="flex items-center gap-1">
+                      <span className="w-4 h-4 sm:w-5 sm:h-5 rounded bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center text-[9px] sm:text-[10px] font-bold">
+                        {idx + 1}
+                      </span>
+                      <span className="text-[11px] sm:text-sm whitespace-nowrap">${strike} {optionType}</span>
+                    </div>
+                    <span className="text-[9px] sm:text-[10px] text-slate-400">{expiration}</span>
                   </div>
                 </th>
-              ))}
+                );
+              })}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
             <tr>
-              <td className="px-3 py-1.5 text-slate-500 dark:text-slate-400">Premium</td>
+              <td className="px-2 sm:px-3 py-1.5 text-slate-500 dark:text-slate-400 whitespace-nowrap text-[11px] sm:text-xs">Max Loss</td>
               {simulations.map((sim) => (
-                <td key={sim.candidate.id} className="px-3 py-1.5 text-center font-medium text-slate-700 dark:text-slate-200">
-                  ${Math.abs(sim.candidate.netPremium).toFixed(0)}
-                  <span className="ml-1 text-[10px] text-slate-400">
-                    {sim.candidate.netPremium > 0 ? 'Dr' : 'Cr'}
-                  </span>
-                </td>
-              ))}
-            </tr>
-            <tr className="bg-slate-50/30 dark:bg-slate-800/30">
-              <td className="px-3 py-1.5 text-slate-500 dark:text-slate-400">Max Loss</td>
-              {simulations.map((sim) => (
-                <td key={sim.candidate.id} className="px-3 py-1.5 text-center font-semibold text-red-600">
+                <td key={sim.candidate.id} className="px-2 sm:px-3 py-1.5 text-center font-semibold text-red-600 text-[11px] sm:text-xs">
                   ${Math.abs(sim.candidate.maxLoss).toFixed(0)}
                 </td>
               ))}
             </tr>
-            <tr>
-              <td className="px-3 py-1.5 text-slate-500 dark:text-slate-400">Expected Profit</td>
+            <tr className="bg-slate-50/30 dark:bg-slate-800/30">
+              <td className="px-2 sm:px-3 py-1.5 text-slate-500 dark:text-slate-400 whitespace-nowrap text-[11px] sm:text-xs">Expected Profit</td>
               {simulations.map((sim) => (
-                <td key={sim.candidate.id} className="px-3 py-1.5 text-center font-semibold text-emerald-600">
+                <td key={sim.candidate.id} className="px-2 sm:px-3 py-1.5 text-center font-semibold text-green-600 text-[11px] sm:text-xs">
                   {(sim.candidate as any).expectedProfit?.expectedProfitUsd != null
                     ? `$${(sim.candidate as any).expectedProfit.expectedProfitUsd.toFixed(0)}`
-                    : sim.candidate.maxProfit === 'unlimited' ? '∞' : `$${sim.candidate.maxProfit.toFixed(0)}`}
+                    : 'N/A'}
                 </td>
               ))}
             </tr>
+            <tr>
+              <td className="px-2 sm:px-3 py-1.5 text-slate-500 dark:text-slate-400 whitespace-nowrap text-[11px] sm:text-xs">Expected ROC</td>
+              {simulations.map((sim) => {
+                const expectedProfit = (sim.candidate as any).expectedProfit?.expectedProfitUsd;
+                const premium = Math.abs(sim.candidate.maxLoss);
+                const roc = expectedProfit != null && premium > 0 ? (expectedProfit / premium) * 100 : null;
+                return (
+                  <td key={sim.candidate.id} className="px-2 sm:px-3 py-1.5 text-center font-semibold text-purple-600 text-[11px] sm:text-xs">
+                    {roc != null ? `${roc.toFixed(0)}%` : 'N/A'}
+                  </td>
+                );
+              })}
+            </tr>
             <tr className="bg-slate-50/30 dark:bg-slate-800/30">
-              <td className="px-3 py-1.5 text-slate-500 dark:text-slate-400">Breakeven</td>
+              <td className="px-2 sm:px-3 py-1.5 text-slate-500 dark:text-slate-400 whitespace-nowrap text-[11px] sm:text-xs">Expected Underlayer Move</td>
+              {simulations.map((sim) => (
+                <td key={sim.candidate.id} className="px-2 sm:px-3 py-1.5 text-center font-semibold text-blue-600 text-[11px] sm:text-xs">
+                  {(sim.candidate as any).expectedProfit?.horizonMovePct != null
+                    ? `+${(sim.candidate as any).expectedProfit.horizonMovePct.toFixed(1)}%`
+                    : 'N/A'}
+                  {(sim.candidate as any).expectedProfit?.expectedPriceAtExpiry != null && (
+                    <span className="text-[10px] sm:text-xs text-blue-400 ml-1">→ ${(sim.candidate as any).expectedProfit.expectedPriceAtExpiry.toFixed(0)}</span>
+                  )}
+                </td>
+              ))}
+            </tr>
+            <tr>
+              <td className="px-2 sm:px-3 py-1.5 text-slate-500 dark:text-slate-400 whitespace-nowrap text-[11px] sm:text-xs">Breakeven</td>
               {simulations.map((sim) => {
                 const be = Array.isArray(sim.candidate.breakeven) ? sim.candidate.breakeven[0] : sim.candidate.breakeven;
                 const bePct = ((be - spotPrice) / spotPrice) * 100;
                 return (
-                  <td key={sim.candidate.id} className="px-3 py-1.5 text-center">
+                  <td key={sim.candidate.id} className="px-2 sm:px-3 py-1.5 text-center text-[11px] sm:text-xs">
                     <span className="font-medium text-slate-700 dark:text-slate-200">${be.toFixed(0)}</span>
-                    <span className={`ml-1 text-[10px] ${bePct >= 0 ? 'text-amber-500' : 'text-slate-400'}`}>
-                      ({bePct >= 0 ? '+' : ''}{bePct.toFixed(1)}% from spot)
+                    <span className={`ml-1 text-[9px] sm:text-[10px] ${bePct >= 0 ? 'text-amber-500' : 'text-slate-400'}`}>
+                      ({bePct >= 0 ? '+' : ''}{bePct.toFixed(1)}%)
                     </span>
                   </td>
                 );
               })}
             </tr>
             <tr className="bg-slate-50/30 dark:bg-slate-800/30">
-              <td className="px-3 py-1.5 text-slate-500 dark:text-slate-400">Daily θ</td>
+              <td className="px-2 sm:px-3 py-1.5 text-slate-500 dark:text-slate-400 whitespace-nowrap text-[11px] sm:text-xs">Daily θ</td>
               {simulations.map((sim) => (
-                <td key={sim.candidate.id} className="px-3 py-1.5 text-center text-slate-600 dark:text-slate-300">
+                <td key={sim.candidate.id} className="px-2 sm:px-3 py-1.5 text-center text-slate-600 dark:text-slate-300 text-[11px] sm:text-xs">
                   ${Math.abs(sim.thetaDecay.daily).toFixed(2)}
                 </td>
               ))}
@@ -999,30 +1023,11 @@ function ComparisonTable({ simulations, spotPrice }: ComparisonTableProps) {
 function SimulationCard({ simulation, rank, spotPrice, compact = false }: SimulationCardProps) {
   const { candidate, scenarios, thetaDecay, payoffCurve } = simulation;
 
-  // Find min/max for chart scaling
-  const minPnl = Math.min(...payoffCurve.map((p) => p.pnl));
-  const maxPnl = Math.max(...payoffCurve.map((p) => p.pnl));
-  const range = maxPnl - minPnl || 1;
-  const minPrice = Math.min(...payoffCurve.map((p) => p.price));
-  const maxPrice = Math.max(...payoffCurve.map((p) => p.price));
-  const priceRange = maxPrice - minPrice || 1;
-
   // Breakeven calculation
   const breakeven = Array.isArray(candidate.breakeven) ? candidate.breakeven[0] : candidate.breakeven;
-  const breakevenPct = ((breakeven - spotPrice) / spotPrice) * 100;
-  const breakevenPosition = ((breakeven - minPrice) / priceRange) * 100;
-
-  // Max ROI for color scaling
-  const maxRoi = Math.max(...scenarios.map((s) => Math.abs(s.roi)));
 
   // Generate AI insight
   const insight = generateInsight(candidate, spotPrice);
-
-  // Calculate gradient intensity (0-1) based on P/L severity
-  const getColorIntensity = (pnl: number) => {
-    const ratio = Math.abs(pnl) / Math.max(Math.abs(minPnl), Math.abs(maxPnl));
-    return Math.min(1, 0.3 + ratio * 0.7);
-  };
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden h-full flex flex-col">
@@ -1054,75 +1059,77 @@ function SimulationCard({ simulation, rank, spotPrice, compact = false }: Simula
       </div>
 
       <div className="p-3 space-y-2 flex-1">
-        {/* Payoff Chart - Compact */}
-        <div className="h-16 relative bg-slate-100 dark:bg-slate-700/50 rounded overflow-hidden">
-          <div className="absolute inset-0 flex items-end">
-            {payoffCurve.filter((_, i) => i % 4 === 0).map((point, idx) => {
-              const height = ((point.pnl - minPnl) / range) * 100;
-              const intensity = getColorIntensity(point.pnl);
-              return (
-                <div key={idx} className="flex-1" style={{ height: `${height}%` }}>
+        {/* P&L Zone Chart with BE Distance Indicator */}
+        {(() => {
+          // Calculate BE distance (what matters most)
+          const beMovePct = ((breakeven - spotPrice) / spotPrice) * 100;
+          const maxLoss = Math.abs(candidate.maxLoss);
+
+          // Get P&L at +50% move for display
+          const getPnlAtMove = (movePct: number) => {
+            const targetPrice = spotPrice * (1 + movePct);
+            const closest = payoffCurve.reduce((prev, curr) =>
+              Math.abs(curr.price - targetPrice) < Math.abs(prev.price - targetPrice) ? curr : prev
+            );
+            return closest.pnl;
+          };
+          const pnlAt50 = getPnlAtMove(0.50);
+
+          return (
+            <div className="space-y-1.5">
+              {/* Simplified P/L Zone Bar */}
+              <div className="relative h-8 rounded overflow-hidden bg-slate-100 dark:bg-slate-700/50">
+                {/* Loss zone (left of BE) */}
+                <div
+                  className="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-red-400 to-red-300 dark:from-red-600 dark:to-red-500"
+                  style={{ width: `${Math.min(100, Math.max(0, (beMovePct + 5) / 55 * 100))}%` }}
+                />
+                {/* Profit zone (right of BE) */}
+                <div
+                  className="absolute top-0 bottom-0 right-0 bg-gradient-to-r from-emerald-300 to-emerald-500 dark:from-emerald-600 dark:to-emerald-400"
+                  style={{ width: `${Math.min(100, Math.max(0, 100 - (beMovePct + 5) / 55 * 100))}%` }}
+                />
+                {/* BE marker */}
+                <div
+                  className="absolute top-0 bottom-0 w-0.5 bg-amber-500 z-10"
+                  style={{ left: `${Math.min(100, Math.max(0, (beMovePct + 5) / 55 * 100))}%` }}
+                />
+                {/* Labels on bar */}
+                <div className="absolute inset-0 flex items-center justify-between px-2 text-[9px] font-bold z-20">
+                  <span className="text-red-800 dark:text-red-200">-${(maxLoss/1000).toFixed(1)}k</span>
+                  <span className="text-emerald-800 dark:text-emerald-200">+${(pnlAt50/1000).toFixed(0)}k</span>
+                </div>
+              </div>
+
+              {/* X-axis with key points */}
+              <div className="flex justify-between text-[8px] text-slate-500 dark:text-slate-400">
+                <span>-5%</span>
+                <span>0%</span>
+                <span>+25%</span>
+                <span>+50%</span>
+              </div>
+
+              {/* Normalized BE Distance Indicator */}
+              <div className="flex items-center gap-2 p-1.5 bg-slate-100 dark:bg-slate-700/50 rounded">
+                <span className="text-[9px] text-slate-500 dark:text-slate-400 whitespace-nowrap">To BE:</span>
+                <div className="flex-1 h-2 bg-slate-200 dark:bg-slate-600 rounded-full overflow-hidden">
                   <div
-                    className="w-full h-full"
-                    style={{
-                      backgroundColor: point.pnl >= 0
-                        ? `rgba(16, 185, 129, ${intensity})`
-                        : `rgba(239, 68, 68, ${intensity})`,
-                    }}
+                    className={`h-full rounded-full ${beMovePct <= 10 ? 'bg-emerald-500' : beMovePct <= 20 ? 'bg-amber-500' : 'bg-red-500'}`}
+                    style={{ width: `${Math.min(100, Math.max(5, beMovePct * 2))}%` }}
                   />
                 </div>
-              );
-            })}
-          </div>
-
-          {/* Zero line */}
-          {minPnl < 0 && maxPnl > 0 && (
-            <div
-              className="absolute left-0 right-0 border-t border-dashed border-slate-400 dark:border-slate-500 z-10"
-              style={{ top: `${100 - ((0 - minPnl) / range) * 100}%` }}
-            />
-          )}
-
-          {/* Breakeven marker */}
-          {breakevenPosition >= 0 && breakevenPosition <= 100 && (
-            <div
-              className="absolute top-0 bottom-0 w-0.5 bg-amber-500 z-20"
-              style={{ left: `${breakevenPosition}%` }}
-            >
-              <div className="absolute top-1 left-1 text-[8px] font-medium text-amber-700 dark:text-amber-400 bg-amber-100/90 dark:bg-amber-900/50 px-0.5 rounded">
-                BE
+                <span className={`text-[10px] font-bold whitespace-nowrap ${beMovePct <= 10 ? 'text-emerald-600' : beMovePct <= 20 ? 'text-amber-600' : 'text-red-600'}`}>
+                  +{beMovePct.toFixed(0)}%
+                </span>
               </div>
             </div>
-          )}
-        </div>
+          );
+        })()}
 
         {/* AI Insight - Compact */}
         <div className="flex items-start gap-1.5 p-2 bg-slate-50 dark:bg-slate-700/30 rounded text-[10px] text-slate-600 dark:text-slate-400">
           <Target className="w-3 h-3 text-slate-400 mt-0.5 flex-shrink-0" />
           <span className="leading-relaxed">{insight}</span>
-        </div>
-
-        {/* Scenarios Grid - Compact 2x3 */}
-        <div className="grid grid-cols-3 gap-1">
-          {scenarios.slice(0, 6).map((s, idx) => {
-            const intensity = maxRoi > 0 ? Math.abs(s.roi) / maxRoi : 0;
-            const bgOpacity = 0.1 + intensity * 0.2;
-            return (
-              <div
-                key={idx}
-                className="px-1.5 py-1 rounded text-center text-[10px] font-medium"
-                style={{
-                  backgroundColor: s.pnl >= 0
-                    ? `rgba(16, 185, 129, ${bgOpacity})`
-                    : `rgba(239, 68, 68, ${bgOpacity})`,
-                  color: s.pnl >= 0 ? 'rgb(4, 120, 87)' : 'rgb(185, 28, 28)',
-                }}
-              >
-                <div className="text-[9px] opacity-70">{s.priceMove}</div>
-                <div>{s.roi >= 0 ? '+' : ''}{s.roi.toFixed(0)}%</div>
-              </div>
-            );
-          })}
         </div>
 
         {/* Theta - Compact */}

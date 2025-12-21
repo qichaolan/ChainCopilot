@@ -61,6 +61,7 @@ export const PROMPT_NAMES = {
   STRATEGY_ANALYSIS: 'strategy_analysis',
   WELCOME: 'welcome',
   GREEKS_EXPLANATION: 'greeks_explanation',
+  FUNDAMENTAL: 'fundamental',
 } as const;
 
 export type PromptName = (typeof PROMPT_NAMES)[keyof typeof PROMPT_NAMES];
@@ -332,4 +333,11 @@ export function getStrategyAnalysisPrompt(strategy: string): string {
  */
 export function getGreeksExplanationPrompt(): string {
   return loadPrompt(PROMPT_NAMES.GREEKS_EXPLANATION);
+}
+
+/**
+ * Get the fundamental analysis prompt for SEC filings
+ */
+export function getFundamentalPrompt(): string {
+  return loadPrompt(PROMPT_NAMES.FUNDAMENTAL);
 }

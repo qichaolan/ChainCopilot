@@ -1,0 +1,19 @@
+{
+  "cik": "0001783879",
+  "accession_number": "0001783879-22-000104",
+  "form_type": "10-Q",
+  "company_name": "Robinhood Markets, Inc.",
+  "ticker": "HOOD",
+  "filed_at": "2022-05-06T00:00:00",
+  "accepted_at": "2022-05-06T20:02:40+00:00",
+  "period_of_report": "2022-03-31",
+  "status": "ready",
+  "discovered_at": "2025-12-19T05:55:36.326072",
+  "processed_at": "2025-12-19T05:57:05.130606",
+  "error_message": null,
+  "retry_count": 0,
+  "filing_url": "https://www.sec.gov/Archives/edgar/data/1783879/000178387922000104/hood-20220331.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/1783879/000178387922000104/0001783879-22-000104-index.html",
+  "json_path": "HOOD/HOOD-10-Q-2022-05-06.json",
+  "pdf_path": null
+}

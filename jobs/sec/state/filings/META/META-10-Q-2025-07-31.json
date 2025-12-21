@@ -1,0 +1,19 @@
+{
+  "cik": "0001326801",
+  "accession_number": "0001628280-25-036791",
+  "form_type": "10-Q",
+  "company_name": "Meta Platforms, Inc.",
+  "ticker": "META",
+  "filed_at": "2025-07-31T00:00:00",
+  "accepted_at": "2025-07-31T00:02:12+00:00",
+  "period_of_report": "2025-06-30",
+  "status": "ready",
+  "discovered_at": "2025-12-19T05:55:32.257185",
+  "processed_at": "2025-12-19T05:56:48.963937",
+  "error_message": null,
+  "retry_count": 0,
+  "filing_url": "https://www.sec.gov/Archives/edgar/data/1326801/000162828025036791/meta-20250630.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/1326801/000162828025036791/0001628280-25-036791-index.html",
+  "json_path": "META/META-10-Q-2025-07-31.json",
+  "pdf_path": null
+}

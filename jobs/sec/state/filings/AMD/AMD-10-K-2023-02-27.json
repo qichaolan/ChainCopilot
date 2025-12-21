@@ -1,0 +1,19 @@
+{
+  "cik": "0000002488",
+  "accession_number": "0000002488-23-000047",
+  "form_type": "10-K",
+  "company_name": "ADVANCED MICRO DEVICES INC",
+  "ticker": "AMD",
+  "filed_at": "2023-02-27T00:00:00",
+  "accepted_at": "2023-02-27T16:20:39+00:00",
+  "period_of_report": "2022-12-31",
+  "status": "ready",
+  "discovered_at": "2025-12-19T05:55:28.243149",
+  "processed_at": "2025-12-19T05:56:31.786061",
+  "error_message": null,
+  "retry_count": 0,
+  "filing_url": "https://www.sec.gov/Archives/edgar/data/2488/000000248823000047/amd-20221231.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/2488/000000248823000047/0000002488-23-000047-index.html",
+  "json_path": "AMD/AMD-10-K-2023-02-27.json",
+  "pdf_path": null
+}

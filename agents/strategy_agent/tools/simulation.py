@@ -1,18 +1,20 @@
 """
-Strategy Simulation Tools.
+LEAPS Simulation Engine.
 
-Simulates P&L scenarios and payoff curves for strategy candidates.
+Clean, deterministic simulation for LEAPS options.
 
-Key design principle: All assumptions are explicit and visible in output.
-Price move scenarios are dynamically generated based on time horizon,
-not hardcoded static values.
+Core Principles:
+1. Expected Move ≠ Volatility - it's a baseline growth assumption
+2. Scenarios are relative to projected price, not spot
+3. All numbers are reproducible - no Monte Carlo, no probability guessing
+4. No IV unless explicitly passed
+
+All math is standard options P&L - no magic.
 """
 
 from __future__ import annotations
 
-from typing import List, Dict, Optional
-import math
-
+from typing import List, Dict, Optional, TypedDict
 import os
 import sys
 
@@ -21,64 +23,426 @@ TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 AGENT_DIR = os.path.dirname(TOOLS_DIR)
 sys.path.insert(0, AGENT_DIR)
 
-from types_ import (
-    StrategyCandidate,
-    SimulationResult,
-    SimulationAssumption,
-    HorizonType,
-)
+from types_ import StrategyCandidate
 
 
 # ============================================================================
-# Default Movement Assumptions by Time Horizon
-# ============================================================================
-# These are reasonable defaults based on historical equity volatility.
-# Expected move ≈ 1 standard deviation move for the period
-# Stress move ≈ 2 standard deviation move (tail risk scenario)
-
-DEFAULT_ASSUMPTIONS: Dict[HorizonType, Dict[str, float]] = {
-    "intraweek": {      # 0-7 days
-        "expected": 0.03,   # ±3%
-        "stress": 0.06,     # ±6%
-    },
-    "weekly": {         # 7-30 days
-        "expected": 0.08,   # ±8%
-        "stress": 0.15,     # ±15%
-    },
-    "monthly": {        # 30-90 days
-        "expected": 0.12,   # ±12%
-        "stress": 0.22,     # ±22%
-    },
-    "quarterly": {      # 90-180 days
-        "expected": 0.18,   # ±18%
-        "stress": 0.32,     # ±32%
-    },
-    "leaps": {          # 180-730+ days
-        "expected": 0.30,   # ±30%
-        "stress": 0.50,     # ±50%
-    },
-}
-
-# Default annual growth rate assumption for LEAPS
-# Based on historical S&P 500 average returns (~8-10% nominal)
-# This is a starting point; user can override based on their thesis
-DEFAULT_ANNUAL_GROWTH_PCT = 0.08  # 8% annual growth assumption
-
-
-# ============================================================================
-# Horizon Detection
+# Fixed Scenario Deltas (UX-driven, deviation from projected price)
 # ============================================================================
 
-def detect_horizon_type(dte: int) -> HorizonType:
+# Grid cards: 6 scenarios (deviation from projected price)
+# UI shows: -15%, -10%, 0% (expected), +5%, +10%, +20%
+GRID_DELTAS = [-0.15, -0.10, 0.0, 0.05, 0.10, 0.20]
+
+# Bar chart: 9 scenarios (deviation from projected price)
+# UI shows: -15%, -10%, -5%, 0%, +5%, +10%, +15%, +20%, +25%
+BAR_DELTAS = [-0.15, -0.10, -0.05, 0.0, 0.05, 0.10, 0.15, 0.20, 0.25]
+
+# ============================================================================
+# Type Definitions
+# ============================================================================
+
+class ScenarioResult(TypedDict):
+    """A single scenario result."""
+    label: str       # e.g., "+15%", "0% (expected)"
+    price: float     # Underlying price at this scenario
+    pnl: float       # P&L in dollars
+    roi: float       # ROI as percentage
+
+
+class LeapsSimulationResult(TypedDict):
+    """Complete simulation result for a LEAPS candidate."""
+    candidateId: str
+    candidate: StrategyCandidate
+
+    # Core projection
+    projectedPrice: float      # spot * (1 + horizon_move)
+    horizonMovePct: float      # (1 + expected_move)^years - 1
+
+    # Scenarios
+    gridScenarios: List[ScenarioResult]   # 5 cards
+    barScenarios: List[ScenarioResult]    # 9 bars
+
+    # Summary metrics
+    summary: Dict[str, float]
+
+    # Payoff curve for charting
+    payoffCurve: List[Dict[str, float]]
+
+    # Theta decay
+    thetaDecay: Dict[str, float]
+
+
+# ============================================================================
+# Step 1: Time Normalization
+# ============================================================================
+
+def _get_years(dte: int) -> float:
+    """Convert DTE to years."""
+    return dte / 365.0
+
+
+# ============================================================================
+# Step 2: Compute Projected Price (Center Line)
+# ============================================================================
+
+def compute_horizon_move(expected_move: float, dte: int) -> float:
     """
-    Map days-to-expiration to a horizon category.
+    Compute horizon move using compound growth.
+
+    horizon_move = (1 + expected_move)^years - 1
 
     Args:
+        expected_move: Expected annualized move (decimal, e.g., 0.10 = 10%)
         dte: Days to expiration
 
     Returns:
-        HorizonType category
+        Horizon move as decimal
     """
+    years = _get_years(dte)
+    return (1 + expected_move) ** years - 1
+
+
+def compute_projected_price(spot_price: float, expected_move: float, dte: int) -> float:
+    """
+    Compute projected price at expiry.
+
+    projected_price = spot_price * (1 + horizon_move)
+
+    This is the anchor for all scenarios.
+    """
+    horizon_move = compute_horizon_move(expected_move, dte)
+    return spot_price * (1 + horizon_move)
+
+
+# ============================================================================
+# Step 3-4: Convert Deltas to Absolute Prices
+# ============================================================================
+
+def _delta_to_scenario(
+    delta: float,
+    projected_price: float,
+    spot_price: float,
+) -> Dict[str, float]:
+    """
+    Convert a delta (deviation from projected) to scenario price and move.
+
+    scenario_price = projected_price * (1 + delta)
+    scenario_move = (scenario_price / spot_price) - 1
+    """
+    scenario_price = projected_price * (1 + delta)
+    scenario_move = (scenario_price / spot_price) - 1
+    return {
+        "delta": delta,
+        "price": scenario_price,
+        "move": scenario_move,
+    }
+
+
+# ============================================================================
+# Step 5: P&L Calculation
+# ============================================================================
+
+def calculate_pnl_long_call(
+    scenario_price: float,
+    strike: float,
+    premium: float,
+) -> float:
+    """
+    Calculate P&L for a long call at expiration.
+
+    intrinsic = max(0, scenario_price - strike) * 100
+    pnl = intrinsic - premium
+    """
+    intrinsic = max(0, scenario_price - strike) * 100
+    return intrinsic - premium
+
+
+def calculate_pnl_long_put(
+    scenario_price: float,
+    strike: float,
+    premium: float,
+) -> float:
+    """
+    Calculate P&L for a long put at expiration.
+
+    intrinsic = max(0, strike - scenario_price) * 100
+    pnl = intrinsic - premium
+    """
+    intrinsic = max(0, strike - scenario_price) * 100
+    return intrinsic - premium
+
+
+def calculate_pnl_at_price(
+    candidate: StrategyCandidate,
+    target_price: float,
+) -> float:
+    """
+    Calculate P&L for any strategy at a specific price.
+
+    Handles multi-leg strategies correctly.
+    """
+    pnl = -candidate["netPremium"]
+
+    for leg in candidate["legs"]:
+        contract = leg["contract"]
+        qty = leg["quantity"]
+
+        if contract["optionType"] == "call":
+            leg_value = max(0, target_price - contract["strike"]) * 100 * qty
+        else:
+            leg_value = max(0, contract["strike"] - target_price) * 100 * qty
+
+        if leg["action"] == "buy":
+            pnl += leg_value
+        else:
+            pnl -= leg_value
+
+    return pnl
+
+
+def calculate_roi(pnl: float, premium: float) -> float:
+    """ROI % = pnl / premium * 100"""
+    if premium == 0:
+        return 0.0
+    return (pnl / abs(premium)) * 100
+
+
+# ============================================================================
+# Step 6-7: Summary Metrics
+# ============================================================================
+
+def calculate_breakeven(strike: float, premium: float, is_call: bool = True) -> float:
+    """
+    Standard breakeven calculation.
+
+    Call: strike + (premium / 100)
+    Put: strike - (premium / 100)
+    """
+    premium_per_share = premium / 100
+    if is_call:
+        return strike + premium_per_share
+    else:
+        return strike - premium_per_share
+
+
+def calculate_breakeven_pct(breakeven: float, spot_price: float) -> float:
+    """Breakeven as % move from spot."""
+    return (breakeven / spot_price) - 1
+
+
+# ============================================================================
+# Step 9: Theta Decay
+# ============================================================================
+
+def calculate_theta_decay(candidate: StrategyCandidate) -> Dict[str, float]:
+    """
+    Calculate theta decay from contract data.
+
+    daily_theta = abs(theta) * 100
+    """
+    total_theta = sum(
+        leg["contract"]["theta"] * (1 if leg["action"] == "buy" else -1)
+        for leg in candidate["legs"]
+    )
+
+    daily = abs(total_theta) * 100
+
+    return {
+        "daily": round(daily, 2),
+        "weekly": round(daily * 7, 2),
+        "monthly": round(daily * 30, 2),
+    }
+
+
+# ============================================================================
+# Main Simulation Function
+# ============================================================================
+
+def simulate_leaps(
+    candidate: StrategyCandidate,
+    spot_price: float,
+    expected_move: float,
+) -> LeapsSimulationResult:
+    """
+    Simulate a LEAPS candidate with clean, deterministic math.
+
+    Args:
+        candidate: LEAPS strategy candidate
+        spot_price: Current underlying price
+        expected_move: Expected annualized move (decimal, e.g., 0.10 = 10%)
+
+    Returns:
+        Complete simulation result with all scenarios and metrics
+    """
+    # Extract contract details
+    leg = candidate["legs"][0]
+    contract = leg["contract"]
+    strike = contract["strike"]
+    dte = contract["dte"]
+    is_call = contract["optionType"] == "call"
+    premium = candidate["netPremium"]
+
+    # Step 1-2: Compute horizon move and projected price
+    horizon_move = compute_horizon_move(expected_move, dte)
+    projected_price = spot_price * (1 + horizon_move)
+
+    # Step 3-5: Generate grid scenarios
+    grid_scenarios: List[ScenarioResult] = []
+    for delta in GRID_DELTAS:
+        scenario = _delta_to_scenario(delta, projected_price, spot_price)
+        pnl = calculate_pnl_at_price(candidate, scenario["price"])
+        roi = calculate_roi(pnl, premium)
+
+        # Label: delta as %, with "(expected)" at 0
+        if abs(delta) < 0.001:
+            label = "0% (expected)"
+        else:
+            label = f"{'+' if delta >= 0 else ''}{int(delta * 100)}%"
+
+        grid_scenarios.append({
+            "label": label,
+            "price": round(scenario["price"], 2),
+            "pnl": round(pnl, 2),
+            "roi": round(roi, 1),
+        })
+
+    # Generate bar scenarios (same engine, different deltas)
+    bar_scenarios: List[ScenarioResult] = []
+    for delta in BAR_DELTAS:
+        scenario = _delta_to_scenario(delta, projected_price, spot_price)
+        pnl = calculate_pnl_at_price(candidate, scenario["price"])
+        roi = calculate_roi(pnl, premium)
+
+        if abs(delta) < 0.001:
+            label = "0% (expected)"
+        else:
+            label = f"{'+' if delta >= 0 else ''}{int(delta * 100)}%"
+
+        bar_scenarios.append({
+            "label": label,
+            "price": round(scenario["price"], 2),
+            "pnl": round(pnl, 2),
+            "roi": round(roi, 1),
+        })
+
+    # Step 6: Expected profit = P&L at projected price
+    expected_profit = calculate_pnl_at_price(candidate, projected_price)
+
+    # Step 7: Breakeven
+    breakeven = calculate_breakeven(strike, premium, is_call)
+    breakeven_pct = calculate_breakeven_pct(breakeven, spot_price)
+
+    # Step 8: Max loss = premium (for long options)
+    max_loss = premium
+
+    # Step 9: Theta decay
+    theta_decay = calculate_theta_decay(candidate)
+
+    # Build payoff curve (for chart visualization)
+    payoff_curve = _build_payoff_curve(candidate, spot_price, horizon_move)
+
+    # Summary object
+    summary = {
+        "expectedProfit": round(expected_profit, 2),
+        "expectedRoi": round(calculate_roi(expected_profit, premium), 1),
+        "maxLoss": round(max_loss, 2),
+        "breakevenPrice": round(breakeven, 2),
+        "breakevenPct": round(breakeven_pct, 4),
+        "dailyTheta": theta_decay["daily"],
+    }
+
+    return {
+        "candidateId": candidate["id"],
+        "candidate": candidate,
+        "projectedPrice": round(projected_price, 2),
+        "horizonMovePct": round(horizon_move, 4),
+        "gridScenarios": grid_scenarios,
+        "barScenarios": bar_scenarios,
+        "summary": summary,
+        "payoffCurve": payoff_curve,
+        "thetaDecay": theta_decay,
+    }
+
+
+def simulate_leaps_candidates(
+    candidates: List[StrategyCandidate],
+    spot_price: float,
+    expected_move: float,
+) -> List[LeapsSimulationResult]:
+    """
+    Simulate multiple LEAPS candidates.
+
+    Args:
+        candidates: List of LEAPS candidates
+        spot_price: Current underlying price
+        expected_move: Expected annualized move (decimal)
+
+    Returns:
+        List of simulation results
+    """
+    return [
+        simulate_leaps(candidate, spot_price, expected_move)
+        for candidate in candidates
+    ]
+
+
+# ============================================================================
+# Payoff Curve (for charting)
+# ============================================================================
+
+def _build_payoff_curve(
+    candidate: StrategyCandidate,
+    spot_price: float,
+    horizon_move: float,
+    num_points: int = 31,
+) -> List[Dict[str, float]]:
+    """
+    Build payoff curve for visualization.
+
+    Range: spot * (1 - 0.20) to spot * (1 + horizon_move * 1.5)
+    """
+    min_price = spot_price * 0.80
+    max_price = spot_price * (1 + horizon_move * 1.5)
+
+    if max_price <= min_price:
+        max_price = spot_price * 1.50
+
+    step = (max_price - min_price) / (num_points - 1)
+
+    curve = []
+    for i in range(num_points):
+        price = min_price + (i * step)
+        pnl = calculate_pnl_at_price(candidate, price)
+        curve.append({
+            "price": round(price, 2),
+            "pnl": round(pnl, 2),
+        })
+
+    return curve
+
+
+# ============================================================================
+# Legacy Compatibility Layer
+# ============================================================================
+# These functions maintain backward compatibility with existing code.
+# New code should use simulate_leaps() directly.
+
+from types_ import SimulationResult, SimulationAssumption, HorizonType
+
+DEFAULT_ANNUAL_GROWTH_PCT = 0.10
+
+DEFAULT_ASSUMPTIONS: Dict[HorizonType, Dict[str, float]] = {
+    "intraweek": {"expected": 0.03, "stress": 0.06},
+    "weekly": {"expected": 0.05, "stress": 0.10},
+    "monthly": {"expected": 0.08, "stress": 0.16},
+    "quarterly": {"expected": 0.12, "stress": 0.24},
+    "leaps": {"expected": 0.10, "stress": 0.20},
+}
+
+
+def detect_horizon_type(dte: int) -> HorizonType:
+    """Map DTE to horizon category."""
     if dte <= 7:
         return "intraweek"
     elif dte <= 30:
@@ -95,112 +459,35 @@ def get_candidate_dte(candidate: StrategyCandidate) -> int:
     """Extract DTE from candidate's first leg."""
     if candidate["legs"]:
         return candidate["legs"][0]["contract"].get("dte", 30)
-    return 30  # Default fallback
+    return 30
 
-
-# ============================================================================
-# Growth Rate Helpers
-# ============================================================================
-
-def compute_projected_price(
-    spot_price: float,
-    dte: int,
-    annual_growth_pct: float,
-) -> float:
-    """
-    Compute projected price at expiry using compound growth.
-
-    Formula: spot * (1 + annual_growth)^(dte/365)
-
-    Args:
-        spot_price: Current underlying price
-        dte: Days to expiration
-        annual_growth_pct: Annual growth rate as decimal (0.08 = 8%)
-
-    Returns:
-        Projected price at expiration
-    """
-    years = dte / 365
-    return spot_price * ((1 + annual_growth_pct) ** years)
-
-
-def compute_annualized_growth(
-    spot_price: float,
-    target_price: float,
-    dte: int,
-) -> float:
-    """
-    Back-compute annual growth rate from a target price.
-
-    Useful when user provides a price target.
-
-    Args:
-        spot_price: Current underlying price
-        target_price: User's price target at expiration
-        dte: Days to expiration
-
-    Returns:
-        Implied annual growth rate as decimal
-    """
-    if spot_price <= 0 or target_price <= 0 or dte <= 0:
-        return 0.0
-    years = dte / 365
-    return (target_price / spot_price) ** (1 / years) - 1
-
-
-# ============================================================================
-# Assumption Building
-# ============================================================================
 
 def build_assumptions(
     dte: int,
     custom_moves: Optional[List[float]] = None,
-    custom_expected: Optional[float] = None,
-    custom_stress: Optional[float] = None,
+    custom_expected_move: Optional[float] = None,
     spot_price: Optional[float] = None,
-    custom_annual_growth: Optional[float] = None,
 ) -> SimulationAssumption:
-    """
-    Build simulation assumptions based on time horizon.
-
-    Args:
-        dte: Days to expiration
-        custom_moves: User-provided custom price moves (overrides defaults)
-        custom_expected: User-provided expected move %
-        custom_stress: User-provided stress move %
-        spot_price: Current underlying price (required for growth projection)
-        custom_annual_growth: User-provided annual growth assumption
-
-    Returns:
-        SimulationAssumption with all parameters explicit
-    """
+    """Build simulation assumptions based on time horizon."""
     horizon = detect_horizon_type(dte)
     defaults = DEFAULT_ASSUMPTIONS[horizon]
 
-    # Determine source
-    if custom_moves:
-        source = "user"
-    elif custom_expected is not None or custom_stress is not None:
-        source = "user"
-    elif custom_annual_growth is not None:
-        source = "user"
+    if custom_expected_move is not None:
+        expected_move = custom_expected_move
+        stress_move = custom_expected_move * 2
     else:
-        source = "default"
+        expected_move = defaults["expected"]
+        stress_move = defaults["stress"]
 
-    # Use custom values if provided, otherwise defaults
-    expected_move = custom_expected if custom_expected is not None else defaults["expected"]
-    stress_move = custom_stress if custom_stress is not None else defaults["stress"]
+    source = "user" if (custom_moves or custom_expected_move is not None) else "default"
 
-    # Compute annual growth and projected price for LEAPS
-    annual_growth: Optional[float] = None
-    projected_price: Optional[float] = None
+    # Compute projected move
+    years = dte / 365
+    projected_move_pct = (1 + expected_move) ** years - 1
 
-    if horizon == "leaps":
-        # Use custom growth if provided, otherwise default
-        annual_growth = custom_annual_growth if custom_annual_growth is not None else DEFAULT_ANNUAL_GROWTH_PCT
-        # Compute projected price if spot is available
-        if spot_price is not None and spot_price > 0:
-            projected_price = round(compute_projected_price(spot_price, dte, annual_growth), 2)
+    projected_price = None
+    if spot_price and spot_price > 0:
+        projected_price = round(spot_price * (1 + projected_move_pct), 2)
 
     return {
         "horizonType": horizon,
@@ -209,7 +496,7 @@ def build_assumptions(
         "stressMovePct": stress_move,
         "customMoves": custom_moves,
         "source": source,
-        "annualGrowthPct": annual_growth,
+        "projectedMovePct": projected_move_pct,
         "projectedPriceAtExpiry": projected_price,
     }
 
@@ -218,44 +505,23 @@ def build_iv_based_assumptions(
     dte: int,
     avg_iv: float,
     spot_price: Optional[float] = None,
-    custom_annual_growth: Optional[float] = None,
 ) -> SimulationAssumption:
-    """
-    Build assumptions using implied volatility.
-
-    Uses IV to calculate expected move: IV * sqrt(DTE/365)
-    This is more accurate than static defaults for IV-rich products.
-
-    Args:
-        dte: Days to expiration
-        avg_iv: Average implied volatility (as decimal, e.g., 0.30 = 30%)
-        spot_price: Current underlying price (for growth projection)
-        custom_annual_growth: User-provided annual growth assumption
-
-    Returns:
-        SimulationAssumption calibrated to implied vol
-    """
+    """Build assumptions using implied volatility."""
+    import math
     horizon = detect_horizon_type(dte)
 
-    # Expected move = IV * sqrt(DTE/365)
-    # This is the 1-sigma move implied by options pricing
     expected_move = avg_iv * math.sqrt(dte / 365)
+    stress_move = expected_move * 2
 
-    # Stress move = ~2 sigma
-    stress_move = expected_move * 1.8
-
-    # Cap at reasonable bounds
     expected_move = min(expected_move, 0.50)
-    stress_move = min(stress_move, 0.80)
+    stress_move = min(stress_move, 1.00)
 
-    # Compute annual growth and projected price for LEAPS
-    annual_growth: Optional[float] = None
-    projected_price: Optional[float] = None
+    years = dte / 365
+    projected_move_pct = (1 + expected_move) ** years - 1
 
-    if horizon == "leaps":
-        annual_growth = custom_annual_growth if custom_annual_growth is not None else DEFAULT_ANNUAL_GROWTH_PCT
-        if spot_price is not None and spot_price > 0:
-            projected_price = round(compute_projected_price(spot_price, dte, annual_growth), 2)
+    projected_price = None
+    if spot_price and spot_price > 0:
+        projected_price = round(spot_price * (1 + projected_move_pct), 2)
 
     return {
         "horizonType": horizon,
@@ -264,68 +530,10 @@ def build_iv_based_assumptions(
         "stressMovePct": round(stress_move, 3),
         "customMoves": None,
         "source": "implied_vol",
-        "annualGrowthPct": annual_growth,
+        "projectedMovePct": round(projected_move_pct, 3) if projected_move_pct else None,
         "projectedPriceAtExpiry": projected_price,
     }
 
-
-# ============================================================================
-# Scenario Generation
-# ============================================================================
-
-def generate_scenario_moves(
-    assumptions: SimulationAssumption,
-    horizon_move: Optional[float] = None,
-    is_leaps: bool = False,
-) -> List[float]:
-    """
-    Generate price move percentages from assumptions.
-
-    For LEAPS: Use horizon_move ± 20pp (e.g., if horizon=24%, show 4%, 14%, 24%, 34%, 44%)
-    For other strategies: Use symmetric ladder around zero.
-
-    Args:
-        assumptions: SimulationAssumption object
-        horizon_move: Expected horizon move for LEAPS (decimal, e.g., 0.24 = 24%)
-        is_leaps: Whether this is a LEAPS strategy
-
-    Returns:
-        List of price move percentages as decimals
-    """
-    # Use custom moves if provided
-    if assumptions.get("customMoves"):
-        return sorted(assumptions["customMoves"])
-
-    # For LEAPS: use horizon_move ± 20pp
-    if is_leaps and horizon_move is not None:
-        return [
-            horizon_move - 0.20,
-            horizon_move - 0.10,
-            horizon_move,  # expected
-            horizon_move + 0.10,
-            horizon_move + 0.20,
-        ]
-
-    expected = assumptions["expectedMovePct"]
-    stress = assumptions["stressMovePct"]
-
-    # Build symmetric ladder around zero
-    moves = [
-        -stress,
-        -expected,
-        -expected / 2,
-        0,
-        expected / 2,
-        expected,
-        stress,
-    ]
-
-    return moves
-
-
-# ============================================================================
-# Main Simulation Functions
-# ============================================================================
 
 def simulate_candidates(
     candidates: List[StrategyCandidate],
@@ -335,17 +543,10 @@ def simulate_candidates(
     expected_move_pct: Optional[float] = None,
 ) -> List[SimulationResult]:
     """
-    Simulate P&L scenarios for selected candidates.
+    Simulate P&L scenarios for candidates.
 
-    Args:
-        candidates: List of strategy candidates to simulate
-        spot_price: Current underlying price
-        custom_moves: Optional custom price moves (overrides auto-detection)
-        use_iv_assumptions: If True, use IV to calculate expected moves
-        expected_move_pct: AI-determined expected move (annual) for LEAPS horizon scenarios
-
-    Returns:
-        List of simulation results with scenarios, payoff curves, and visible assumptions
+    For LEAPS: Uses the new clean simulation engine.
+    For others: Uses legacy symmetric scenario generation.
     """
     results: List[SimulationResult] = []
 
@@ -353,44 +554,140 @@ def simulate_candidates(
         dte = get_candidate_dte(candidate)
         is_leaps = candidate.get("strategyType") == "leaps"
 
-        # Build assumptions for this candidate
-        if use_iv_assumptions and candidate["legs"]:
-            # Average IV across legs
-            ivs = [leg["contract"].get("iv", 0.25) for leg in candidate["legs"]]
-            avg_iv = sum(ivs) / len(ivs) if ivs else 0.25
-            assumptions = build_iv_based_assumptions(dte, avg_iv, spot_price=spot_price)
+        if is_leaps:
+            # Use new clean LEAPS simulation
+            expected = expected_move_pct if expected_move_pct else 0.10
+            leaps_result = simulate_leaps(candidate, spot_price, expected)
+
+            # Convert to legacy format for backward compatibility
+            assumptions = build_assumptions(dte, custom_expected_move=expected, spot_price=spot_price)
+
+            # Map grid scenarios to legacy format
+            scenarios = [
+                {
+                    "priceMove": s["label"],
+                    "price": s["price"],
+                    "pnl": s["pnl"],
+                    "roi": s["roi"],
+                }
+                for s in leaps_result["gridScenarios"]
+            ]
+
+            scenarios_bars = [
+                {
+                    "priceMove": s["label"],
+                    "price": s["price"],
+                    "pnl": s["pnl"],
+                    "roi": s["roi"],
+                }
+                for s in leaps_result["barScenarios"]
+            ]
+
+            result: SimulationResult = {
+                "candidateId": candidate["id"],
+                "candidate": candidate,
+                "scenarios": scenarios,
+                "scenariosBars": scenarios_bars,
+                "thetaDecay": leaps_result["thetaDecay"],
+                "payoffCurve": leaps_result["payoffCurve"],
+                "assumptions": assumptions,
+            }
+            results.append(result)
         else:
-            assumptions = build_assumptions(dte, custom_moves=custom_moves, spot_price=spot_price)
+            # Legacy path for non-LEAPS
+            if use_iv_assumptions and candidate["legs"]:
+                ivs = [leg["contract"].get("iv", 0.25) for leg in candidate["legs"]]
+                avg_iv = sum(ivs) / len(ivs) if ivs else 0.25
+                assumptions = build_iv_based_assumptions(dte, avg_iv, spot_price=spot_price)
+            else:
+                assumptions = build_assumptions(
+                    dte,
+                    custom_moves=custom_moves,
+                    custom_expected_move=expected_move_pct,
+                    spot_price=spot_price,
+                )
 
-        # For LEAPS: calculate horizon move and use horizon ± 20pp scenarios
-        horizon_move = None
-        if is_leaps and expected_move_pct is not None:
-            t_years = dte / 365
-            horizon_move = expected_move_pct * math.sqrt(t_years)
+            moves = _generate_legacy_moves(assumptions)
+            scenarios = _calculate_legacy_scenarios(candidate, spot_price, moves)
+            payoff_curve = _build_legacy_payoff_curve(candidate, spot_price, assumptions)
+            theta_decay = calculate_theta_decay(candidate)
 
-        # Generate scenario moves - use horizon-based for LEAPS
-        moves = generate_scenario_moves(assumptions, horizon_move=horizon_move, is_leaps=is_leaps)
-
-        # Calculate all components with custom scenario labels for LEAPS
-        if is_leaps and horizon_move is not None:
-            scenarios = _calculate_leaps_scenarios(candidate, spot_price, moves, horizon_move)
-        else:
-            scenarios = _calculate_scenarios(candidate, spot_price, moves)
-
-        payoff_curve = _calculate_payoff_curve(candidate, spot_price, assumptions)
-        theta_decay = _calculate_theta_decay(candidate)
-
-        result: SimulationResult = {
-            "candidateId": candidate["id"],
-            "candidate": candidate,
-            "scenarios": scenarios,
-            "thetaDecay": theta_decay,
-            "payoffCurve": payoff_curve,
-            "assumptions": assumptions,  # Always include for transparency
-        }
-        results.append(result)
+            result: SimulationResult = {
+                "candidateId": candidate["id"],
+                "candidate": candidate,
+                "scenarios": scenarios,
+                "thetaDecay": theta_decay,
+                "payoffCurve": payoff_curve,
+                "assumptions": assumptions,
+            }
+            results.append(result)
 
     return results
+
+
+def _generate_legacy_moves(assumptions: SimulationAssumption) -> List[float]:
+    """Generate symmetric moves around zero for non-LEAPS."""
+    expected = assumptions["expectedMovePct"]
+    stress = assumptions["stressMovePct"]
+
+    return [
+        -stress,
+        -expected,
+        -expected / 2,
+        0,
+        expected / 2,
+        expected,
+        stress,
+    ]
+
+
+def _calculate_legacy_scenarios(
+    candidate: StrategyCandidate,
+    spot_price: float,
+    moves: List[float],
+) -> List[Dict]:
+    """Calculate scenarios for non-LEAPS strategies."""
+    scenarios = []
+    premium = candidate["netPremium"]
+
+    for move in moves:
+        price = spot_price * (1 + move)
+        pnl = calculate_pnl_at_price(candidate, price)
+        roi = calculate_roi(pnl, premium)
+
+        scenarios.append({
+            "priceMove": f"{'+' if move >= 0 else ''}{int(move * 100)}%",
+            "price": round(price, 2),
+            "pnl": round(pnl, 2),
+            "roi": round(roi, 1),
+        })
+
+    return scenarios
+
+
+def _build_legacy_payoff_curve(
+    candidate: StrategyCandidate,
+    spot_price: float,
+    assumptions: SimulationAssumption,
+    num_points: int = 31,
+) -> List[Dict[str, float]]:
+    """Build payoff curve for non-LEAPS."""
+    price_range = assumptions["stressMovePct"] * 1.1
+
+    min_price = spot_price * (1 - price_range)
+    max_price = spot_price * (1 + price_range)
+    step = (max_price - min_price) / (num_points - 1)
+
+    curve = []
+    for i in range(num_points):
+        price = min_price + (i * step)
+        pnl = calculate_pnl_at_price(candidate, price)
+        curve.append({
+            "price": round(price, 2),
+            "pnl": round(pnl, 2),
+        })
+
+    return curve
 
 
 def simulate_candidate_with_assumptions(
@@ -398,23 +695,11 @@ def simulate_candidate_with_assumptions(
     spot_price: float,
     assumptions: SimulationAssumption,
 ) -> SimulationResult:
-    """
-    Simulate a single candidate with explicit assumptions.
-
-    Use this when you want full control over assumptions.
-
-    Args:
-        candidate: Strategy candidate to simulate
-        spot_price: Current underlying price
-        assumptions: Explicit assumptions to use
-
-    Returns:
-        SimulationResult with provided assumptions
-    """
-    moves = generate_scenario_moves(assumptions)
-    scenarios = _calculate_scenarios(candidate, spot_price, moves)
-    payoff_curve = _calculate_payoff_curve(candidate, spot_price, assumptions)
-    theta_decay = _calculate_theta_decay(candidate)
+    """Simulate a single candidate with explicit assumptions."""
+    moves = _generate_legacy_moves(assumptions)
+    scenarios = _calculate_legacy_scenarios(candidate, spot_price, moves)
+    payoff_curve = _build_legacy_payoff_curve(candidate, spot_price, assumptions)
+    theta_decay = calculate_theta_decay(candidate)
 
     return {
         "candidateId": candidate["id"],
@@ -427,148 +712,55 @@ def simulate_candidate_with_assumptions(
 
 
 # ============================================================================
-# Internal Calculation Functions
+# Utility Exports (for backward compatibility)
 # ============================================================================
 
-def _calculate_scenarios(
-    candidate: StrategyCandidate,
-    spot_price: float,
-    moves: List[float],
-) -> List[Dict]:
-    """Calculate P&L scenarios for different price moves."""
-    scenarios = []
-
-    for move in moves:
-        price = spot_price * (1 + move)
-        pnl = _calculate_pnl_at_price(candidate, price)
-        roi = _calculate_roi(pnl, candidate["netPremium"])
-
-        scenarios.append({
-            "priceMove": f"{'+' if move >= 0 else ''}{int(move * 100)}%",
-            "price": round(price, 2),
-            "pnl": round(pnl, 2),
-            "roi": round(roi, 1),
-        })
-
-    return scenarios
+def generate_scenario_moves(
+    assumptions: SimulationAssumption,
+    horizon_move: Optional[float] = None,
+    is_leaps: bool = False,
+    for_bar: bool = False,
+) -> List[float]:
+    """Generate scenario moves (legacy compatibility)."""
+    if is_leaps and horizon_move is not None:
+        deltas = BAR_DELTAS if for_bar else GRID_DELTAS
+        return [(1 + horizon_move) * (1 + d) - 1 for d in deltas]
+    return _generate_legacy_moves(assumptions)
 
 
-def _calculate_leaps_scenarios(
-    candidate: StrategyCandidate,
-    spot_price: float,
-    moves: List[float],
-    horizon_move: float,
-) -> List[Dict]:
-    """
-    Calculate P&L scenarios for LEAPS with horizon-based labels.
+def format_assumptions_summary(assumptions: SimulationAssumption) -> str:
+    """Format assumptions as human-readable summary."""
+    horizon = assumptions["horizonType"]
+    dte = assumptions["timeHorizonDays"]
+    expected = assumptions["expectedMovePct"] * 100
+    source = assumptions["source"]
 
-    Labels show "(expected)" for the horizon move scenario.
-    E.g., if horizon=24%, scenarios are: +4%, +14%, +24% (expected), +34%, +44%
-    """
-    scenarios = []
+    base = f"Horizon: {horizon} ({dte} days) | Expected: {expected:.0f}% | Source: {source}"
 
-    for move in moves:
-        price = spot_price * (1 + move)
-        pnl = _calculate_pnl_at_price(candidate, price)
-        roi = _calculate_roi(pnl, candidate["netPremium"])
+    projected_move = assumptions.get("projectedMovePct")
+    projected_price = assumptions.get("projectedPriceAtExpiry")
 
-        # Check if this is the expected horizon move (within 0.001 tolerance)
-        is_expected = abs(move - horizon_move) < 0.001
-        move_label = f"+{int(move * 100)}% (expected)" if is_expected else f"{'+' if move >= 0 else ''}{int(move * 100)}%"
+    if projected_move is not None:
+        base += f" | Projected: +{projected_move * 100:.0f}%"
+        if projected_price:
+            base += f" → ${projected_price:.0f}"
 
-        scenarios.append({
-            "priceMove": move_label,
-            "price": round(price, 2),
-            "pnl": round(pnl, 2),
-            "roi": round(roi, 1),
-        })
+    return base
 
-    return scenarios
-
-
-def _calculate_pnl_at_price(
-    candidate: StrategyCandidate,
-    target_price: float,
-) -> float:
-    """Calculate P&L at a specific underlying price at expiration."""
-    pnl = -candidate["netPremium"]
-
-    for leg in candidate["legs"]:
-        contract = leg["contract"]
-        qty = leg["quantity"]
-
-        # Calculate intrinsic value at expiration
-        if contract["optionType"] == "call":
-            leg_value = max(0, target_price - contract["strike"]) * 100 * qty
-        else:
-            leg_value = max(0, contract["strike"] - target_price) * 100 * qty
-
-        # Buy legs add value, sell legs subtract value
-        if leg["action"] == "buy":
-            pnl += leg_value
-        else:
-            pnl -= leg_value
-
-    return pnl
-
-
-def _calculate_roi(pnl: float, net_premium: float) -> float:
-    """Calculate return on investment percentage."""
-    if net_premium == 0:
-        return 0.0
-    return (pnl / abs(net_premium)) * 100
-
-
-# ============================================================================
-# ROI-Based Reward Scoring (for LEAPS)
-# ============================================================================
 
 def calculate_roi_at_price(
     candidate: StrategyCandidate,
     target_price: float,
 ) -> float:
-    """
-    Calculate ROI % at a specific target price.
-
-    Public wrapper for use in strategy scoring.
-
-    Args:
-        candidate: Strategy candidate
-        target_price: Target underlying price at expiration
-
-    Returns:
-        ROI percentage (e.g., 50.0 = 50% return)
-    """
-    pnl = _calculate_pnl_at_price(candidate, target_price)
-    return _calculate_roi(pnl, candidate["netPremium"])
+    """Calculate ROI % at a specific target price."""
+    pnl = calculate_pnl_at_price(candidate, target_price)
+    return calculate_roi(pnl, candidate["netPremium"])
 
 
 def calculate_roi_score(roi_pct: float) -> int:
-    """
-    Map ROI percentage to a 0-100 score.
-
-    Uses piecewise mapping to prevent lottery strikes from dominating:
-    - -100% → 0
-    - -50% → 17
-    - 0% → 33
-    - +50% → 50
-    - +100% → 67
-    - +200% → 83
-    - +300%+ → 100 (capped)
-
-    Args:
-        roi_pct: ROI percentage (e.g., 50.0 = 50%)
-
-    Returns:
-        Score 0-100
-    """
-    # Clamp extreme values
+    """Map ROI % to 0-100 score."""
     roi_pct = max(-100, min(300, roi_pct))
-
-    # Map -100 to +300 range to 0-100 score
-    # Using formula: score = (roi + 100) / 4
-    score = (roi_pct + 100) / 4
-    return int(max(0, min(100, score)))
+    return int(max(0, min(100, (roi_pct + 100) / 4)))
 
 
 def calculate_reward_score(
@@ -578,7 +770,7 @@ def calculate_reward_score(
     stress_move_pct: float,
     is_bullish: bool = True,
 ) -> Dict[str, float]:
-    """Calculate ROI-based reward scores for expected and stress scenarios."""
+    """Calculate ROI-based reward scores."""
     sign = 1 if is_bullish else -1
 
     roi_exp = calculate_roi_at_price(candidate, spot_price * (1 + sign * expected_move_pct))
@@ -596,92 +788,13 @@ def calculate_reward_score(
     }
 
 
-def _calculate_payoff_curve(
-    candidate: StrategyCandidate,
+def compute_annualized_growth(
     spot_price: float,
-    assumptions: SimulationAssumption,
-    num_points: int = 31,
-) -> List[Dict[str, float]]:
-    """
-    Calculate payoff curve at expiration.
-
-    Price range is tied to assumptions (stress move defines bounds).
-
-    Args:
-        candidate: Strategy candidate
-        spot_price: Current underlying price
-        assumptions: Simulation assumptions (used for range)
-        num_points: Number of points on the curve
-
-    Returns:
-        List of price/pnl points for the payoff curve
-    """
-    # Use stress move to define curve range (with 10% buffer)
-    price_range = assumptions["stressMovePct"] * 1.1
-
-    payoff_curve = []
-
-    min_price = spot_price * (1 - price_range)
-    max_price = spot_price * (1 + price_range)
-    step = (max_price - min_price) / (num_points - 1)
-
-    for i in range(num_points):
-        price = min_price + (i * step)
-        pnl = _calculate_pnl_at_price(candidate, price)
-        payoff_curve.append({
-            "price": round(price, 2),
-            "pnl": round(pnl, 2),
-        })
-
-    return payoff_curve
-
-
-def _calculate_theta_decay(candidate: StrategyCandidate) -> Dict[str, float]:
-    """Calculate theta decay estimates."""
-    total_theta = sum(
-        leg["contract"]["theta"] * (1 if leg["action"] == "buy" else -1)
-        for leg in candidate["legs"]
-    )
-
-    # Theta is typically quoted as daily decay per share, multiply by 100 for contract
-    return {
-        "daily": round(total_theta * 100, 2),
-        "weekly": round(total_theta * 100 * 7, 2),
-        "monthly": round(total_theta * 100 * 30, 2),
-    }
-
-
-# ============================================================================
-# Utility Functions
-# ============================================================================
-
-def format_assumptions_summary(assumptions: SimulationAssumption) -> str:
-    """
-    Format assumptions as a human-readable summary.
-
-    Useful for displaying in UI or logs.
-    """
-    horizon = assumptions["horizonType"]
-    dte = assumptions["timeHorizonDays"]
-    expected = assumptions["expectedMovePct"] * 100
-    stress = assumptions["stressMovePct"] * 100
-    source = assumptions["source"]
-
-    base = (
-        f"Horizon: {horizon} ({dte} days) | "
-        f"Expected: ±{expected:.0f}% | "
-        f"Stress: ±{stress:.0f}% | "
-        f"Source: {source}"
-    )
-
-    # Add growth projection for LEAPS
-    annual_growth = assumptions.get("annualGrowthPct")
-    projected_price = assumptions.get("projectedPriceAtExpiry")
-
-    if annual_growth is not None:
-        growth_info = f" | Growth: {annual_growth * 100:.0f}%/yr"
-        if projected_price is not None:
-            growth_info += f" → ${projected_price:.0f}"
-        base += growth_info
-
-    return base
+    target_price: float,
+    dte: int,
+) -> float:
+    """Back-compute annual growth rate from a target price."""
+    if spot_price <= 0 or target_price <= 0 or dte <= 0:
+        return 0.0
+    years = dte / 365
+    return (target_price / spot_price) ** (1 / years) - 1

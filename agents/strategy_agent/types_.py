@@ -162,30 +162,21 @@ class SimulationAssumption(TypedDict):
     be visible in output for user trust and auditability.
 
     Move Semantics:
-    - For short-dated (<90 DTE): moves are horizon-level (no scaling needed)
-    - For LEAPS (>540 DTE): moves are ANNUALIZED and must be scaled to horizon
-
-    Scaling (vol-style, for scenario bands):
-        horizon_move = annualized_move * sqrt(T_years)
-        where T_years = DTE / 365
-
-    Example: 10% annualized vol over 2 years = 10% * sqrt(2) ≈ 14.1% horizon move
+    - expectedMovePct: Base expected move (annual for LEAPS, horizon for others)
+    - stressMovePct: Tail risk move = 2x expected
+    - projectedMovePct: Horizon-adjusted move
+      - LEAPS: (1 + expectedMovePct)^years - 1 (compound)
+      - Others: expectedMovePct (simple)
+    - projectedPriceAtExpiry: spot * (1 + projectedMovePct)
     """
     horizonType: HorizonType
     timeHorizonDays: int
-    # For LEAPS: these are ANNUALIZED moves (will be scaled to horizon)
-    # For short-dated: these are horizon-level moves (no scaling)
     expectedMovePct: float  # Expected move as decimal (0.10 = 10%)
-    stressMovePct: float    # Stress/tail risk move magnitude (0.20 = 20%)
-    # Probability of stress move occurring (for EV-weighted scoring)
-    stressProb: Optional[float]  # 0.0-1.0, e.g., 0.15 = 15% probability
+    stressMovePct: float    # Stress/tail risk move = 2x expected
     customMoves: Optional[List[float]]  # User-provided custom moves (optional)
-    source: str             # Where assumption came from ("default", "user", "implied_vol")
-    # LEAPS-specific: annual growth rate projection (drift-like)
-    annualGrowthPct: Optional[float]  # Assumed annual drift (0.08 = 8%/year)
-    projectedPriceAtExpiry: Optional[float]  # Computed: spot * (1 + growth)^years
-    # Whether to use vol-style sqrt(T) scaling or drift-style linear scaling
-    scalingType: Optional[Literal["vol", "drift"]]  # Default: "vol" for LEAPS
+    source: str             # Where assumptions came from ("default", "user", "implied_vol")
+    projectedMovePct: Optional[float]  # Horizon-adjusted move (compound for LEAPS)
+    projectedPriceAtExpiry: Optional[float]  # spot * (1 + projectedMovePct)
 
 
 class PriceScenario(TypedDict):

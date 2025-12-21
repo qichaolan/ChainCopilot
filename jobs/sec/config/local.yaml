@@ -1,0 +1,31 @@
+# SEC Filings Watcher - Local Development Configuration
+#
+# Usage:
+#   SEC_JOB_CONFIG=./config/local.yaml python sec_job.py run --watchlist ./config/watchlist.json
+
+# Storage configuration (local filesystem)
+storage_type: local
+state_dir: ./state
+data_dir: ./data
+
+# SEC API settings
+# User-Agent is required by SEC - include valid contact email
+user_agent: "SECWatcher/1.0 (your-email@example.com)"
+
+# Request settings
+timeout_sec: 30
+retries: 3
+concurrency: 4
+
+# Rate limiting: seconds between SEC API requests
+# SEC recommends max 10 req/sec, default 0.5s (2 req/sec) is conservative
+request_interval: 0.5
+
+# PDF rendering options:
+# - "skip": Don't render PDFs (fastest, just get HTML/JSON)
+# - "sec-api": Use sec-api.io (requires SEC_API_KEY)
+# - "wkhtmltopdf": Use local wkhtmltopdf (requires installation)
+pdf_renderer: skip
+
+# Optional: sec-api.io API key for PDF rendering
+# SEC_API_KEY: your-api-key-here

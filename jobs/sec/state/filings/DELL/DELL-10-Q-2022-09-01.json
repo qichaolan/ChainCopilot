@@ -1,0 +1,19 @@
+{
+  "cik": "0001571996",
+  "accession_number": "0001571996-22-000031",
+  "form_type": "10-Q",
+  "company_name": "Dell Technologies Inc.",
+  "ticker": "DELL",
+  "filed_at": "2022-09-01T00:00:00",
+  "accepted_at": "2022-09-01T20:21:14+00:00",
+  "period_of_report": "2022-07-29",
+  "status": "ready",
+  "discovered_at": "2025-12-19T05:55:29.256968",
+  "processed_at": "2025-12-19T05:56:37.843225",
+  "error_message": null,
+  "retry_count": 0,
+  "filing_url": "https://www.sec.gov/Archives/edgar/data/1571996/000157199622000031/dell-20220729.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/1571996/000157199622000031/0001571996-22-000031-index.html",
+  "json_path": "DELL/DELL-10-Q-2022-09-01.json",
+  "pdf_path": null
+}

@@ -139,3 +139,175 @@ cpk-web-inspector,
 .cpk-web-inspector {
   display: none !important;
 }
+
+/* SEC Filing Viewer Styles */
+.highlight-flash {
+  animation: highlight-flash 2s ease-out;
+}
+
+@keyframes highlight-flash {
+  0% {
+    background-color: rgba(59, 130, 246, 0.4);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+/* SEC raw HTML styling - contain messy EDGAR HTML */
+.sec-raw-html {
+  @apply text-sm leading-relaxed overflow-x-auto;
+}
+
+.sec-raw-html table {
+  @apply border-collapse border border-gray-300 dark:border-slate-600 my-4;
+}
+
+.sec-raw-html th,
+.sec-raw-html td {
+  @apply border border-gray-200 dark:border-slate-700 px-2 py-1 text-left;
+}
+
+.sec-raw-html p {
+  @apply mb-2;
+}
+
+.sec-raw-html a {
+  @apply text-blue-500 hover:underline;
+}
+
+/* Citation styling in AI responses */
+.citation-link {
+  @apply inline-flex items-center gap-1 px-1.5 py-0.5 text-xs bg-blue-100 dark:bg-blue-900/30
+         text-blue-700 dark:text-blue-400 rounded cursor-pointer hover:bg-blue-200
+         dark:hover:bg-blue-900/50 transition-colors;
+}
+
+/* SEC Section Content Styling (v2 HTML) */
+.sec-section-content {
+  @apply text-gray-800 dark:text-gray-200;
+}
+
+.sec-content {
+  @apply leading-relaxed;
+  /* Override inline font styles from SEC HTML to match site style */
+  font-family: var(--font-geist-sans), system-ui, sans-serif !important;
+}
+
+/* Override all inline font-family and font-size in SEC HTML */
+.sec-content * {
+  font-family: inherit !important;
+}
+
+.sec-content span,
+.sec-content div {
+  font-size: inherit !important;
+  line-height: inherit !important;
+}
+
+.sec-content p {
+  @apply mb-4 text-[15px] leading-7;
+}
+
+/* First paragraph after heading - no extra margin */
+.sec-content > p:first-child {
+  @apply mt-0;
+}
+
+/* Empty paragraphs (often used as spacers in SEC filings) */
+.sec-content p:empty {
+  @apply hidden;
+}
+
+/* Headings within SEC content (often in caps) */
+.sec-content p:only-child,
+.sec-content p:has(+ br) {
+  @apply font-normal;
+}
+
+/* Handle all-caps section subheadings */
+.sec-content p {
+  text-transform: none;
+}
+
+/* Tables in SEC content */
+.sec-content table {
+  @apply w-full border-collapse my-6 text-sm;
+}
+
+.sec-content th,
+.sec-content td {
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+}
+
+.sec-content th {
+  @apply bg-gray-100 dark:bg-slate-700 px-3 py-2 text-left font-semibold
+         border border-gray-200 dark:border-slate-600;
+}
+
+.sec-content td {
+  @apply px-3 py-2 border border-gray-200 dark:border-slate-600
+         align-top;
+}
+
+.sec-content tr:nth-child(even) td {
+  @apply bg-gray-50 dark:bg-slate-800/50;
+}
+
+/* Numeric cells - right align */
+.sec-content td:has(> $) {
+  @apply text-right font-mono;
+}
+
+/* Lists in SEC content */
+.sec-content ul,
+.sec-content ol {
+  @apply my-4 pl-6 space-y-2;
+}
+
+.sec-content li {
+  @apply text-[15px] leading-7;
+  font-size: 15px !important;
+}
+
+.sec-content ul li {
+  @apply list-disc;
+}
+
+.sec-content ol li {
+  @apply list-decimal;
+}
+
+/* Bold text */
+.sec-content strong,
+.sec-content b {
+  @apply font-semibold text-gray-900 dark:text-white;
+}
+
+/* Italic text */
+.sec-content em,
+.sec-content i {
+  @apply italic;
+}
+
+/* Underlined text (often used for section headers in SEC filings) */
+.sec-content u {
+  @apply underline decoration-gray-400 underline-offset-2;
+}
+
+/* Detect section subheaders (short lines in ALL CAPS) */
+.sec-content p:not(:empty) {
+  word-break: break-word;
+}
+
+/* Improved paragraph spacing for readability */
+.sec-content p + p {
+  @apply mt-3;
+}
+
+/* Handle page breaks / footers often in SEC filings */
+.sec-content p:has(Apple Inc.) + p:has(Form 10-K),
+.sec-content p:has(Page) {
+  @apply text-center text-xs text-gray-400 my-6 py-2 border-t border-gray-200 dark:border-slate-700;
+}

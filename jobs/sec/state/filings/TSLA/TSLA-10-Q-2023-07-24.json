@@ -1,0 +1,19 @@
+{
+  "cik": "0001318605",
+  "accession_number": "0000950170-23-033872",
+  "form_type": "10-Q",
+  "company_name": "Tesla, Inc.",
+  "ticker": "TSLA",
+  "filed_at": "2023-07-24T00:00:00",
+  "accepted_at": "2023-07-21T22:08:29+00:00",
+  "period_of_report": "2023-06-30",
+  "status": "ready",
+  "discovered_at": "2025-12-19T05:55:33.261520",
+  "processed_at": "2025-12-19T05:56:53.021097",
+  "error_message": null,
+  "retry_count": 0,
+  "filing_url": "https://www.sec.gov/Archives/edgar/data/1318605/000095017023033872/tsla-20230630.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/1318605/000095017023033872/0000950170-23-033872-index.html",
+  "json_path": "TSLA/TSLA-10-Q-2023-07-24.json",
+  "pdf_path": null
+}

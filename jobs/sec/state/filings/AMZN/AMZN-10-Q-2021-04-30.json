@@ -1,0 +1,19 @@
+{
+  "cik": "0001018724",
+  "accession_number": "0001018724-21-000010",
+  "form_type": "10-Q",
+  "company_name": "AMAZON COM INC",
+  "ticker": "AMZN",
+  "filed_at": "2021-04-30T00:00:00",
+  "accepted_at": "2021-04-29T18:48:35+00:00",
+  "period_of_report": "2021-03-31",
+  "status": "ready",
+  "discovered_at": "2025-12-19T05:55:30.269624",
+  "processed_at": "2025-12-19T05:56:44.401076",
+  "error_message": null,
+  "retry_count": 0,
+  "filing_url": "https://www.sec.gov/Archives/edgar/data/1018724/000101872421000010/amzn-20210331.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/1018724/000101872421000010/0001018724-21-000010-index.html",
+  "json_path": "AMZN/AMZN-10-Q-2021-04-30.json",
+  "pdf_path": null
+}

@@ -1,0 +1,21 @@
+# SEC API Configuration
+# Get your API key from: https://sec-api.io/
+
+# Required: Your sec-api.io API key
+SEC_API_KEY: 25f636e9872bbf65ff3206df7aad84d2f64f5a507af2f683283e40e0428f1166
+
+# Optional: Request timeout in seconds (default: 30)
+timeout_sec: 120
+
+# Optional: Number of retry attempts for failed requests (default: 3)
+retries: 3
+
+# Optional: Maximum concurrent downloads (default: 2)
+concurrency: 2
+
+# Optional: Exponential backoff multiplier for retries (default: 1.5)
+backoff: 1.5
+
+# Optional: User-Agent header for SEC API requests
+# Format: "AppName/Version (Description; contact@email.com)"
+user_agent: SEC/1.0 (lanqichao@gmail.com)

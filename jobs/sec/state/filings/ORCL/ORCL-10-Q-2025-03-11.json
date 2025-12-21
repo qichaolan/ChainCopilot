@@ -1,0 +1,19 @@
+{
+  "cik": "0001341439",
+  "accession_number": "0000950170-25-037143",
+  "form_type": "10-Q",
+  "company_name": "ORACLE CORP",
+  "ticker": "ORCL",
+  "filed_at": "2025-03-11T00:00:00",
+  "accepted_at": "2025-03-11T20:11:43+00:00",
+  "period_of_report": "2025-02-28",
+  "status": "ready",
+  "discovered_at": "2025-12-19T05:55:20.182022",
+  "processed_at": "2025-12-19T05:55:47.311629",
+  "error_message": null,
+  "retry_count": 0,
+  "filing_url": "https://www.sec.gov/Archives/edgar/data/1341439/000095017025037143/orcl-20250228.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/1341439/000095017025037143/0000950170-25-037143-index.html",
+  "json_path": "ORCL/ORCL-10-Q-2025-03-11.json",
+  "pdf_path": null
+}

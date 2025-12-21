@@ -1,0 +1,25 @@
+{
+  "companies": [
+    {"ticker": "AAPL", "name": "Apple Inc.", "enabled": true},
+    {"ticker": "MSFT", "name": "Microsoft Corporation", "enabled": true},
+    {"ticker": "ORCL", "name": "Oracle Corporation", "enabled": true},
+    {"ticker": "PLTR", "name": "Palantir Technologies Inc.", "enabled": true},
+    {"ticker": "NVDA", "name": "NVIDIA Corporation", "enabled": true},
+    {"ticker": "AVGO", "name": "Broadcom Inc.", "enabled": true},
+    {"ticker": "MU", "name": "Micron Technology Inc.", "enabled": true},
+    {"ticker": "LRCX", "name": "Lam Research Corporation", "enabled": true},
+    {"ticker": "AMAT", "name": "Applied Materials Inc.", "enabled": true},
+    {"ticker": "KLAC", "name": "KLA Corporation", "enabled": true},
+    {"ticker": "AMD", "name": "Advanced Micro Devices Inc.", "enabled": true},
+    {"ticker": "DELL", "name": "Dell Technologies Inc.", "enabled": true},
+    {"ticker": "AMZN", "name": "Amazon.com Inc.", "enabled": true},
+    {"ticker": "GOOGL", "name": "Alphabet Inc.", "enabled": true},
+    {"ticker": "META", "name": "Meta Platforms Inc.", "enabled": true},
+    {"ticker": "TSLA", "name": "Tesla Inc.", "enabled": true},
+    {"ticker": "JPM", "name": "JPMorgan Chase & Co.", "enabled": true},
+    {"ticker": "APP", "name": "AppLovin Corporation", "enabled": true},
+    {"ticker": "HOOD", "name": "Robinhood Markets Inc.", "enabled": true}
+  ],
+  "created_at": "2024-01-01T00:00:00",
+  "updated_at": "2024-12-18T00:00:00"
+}

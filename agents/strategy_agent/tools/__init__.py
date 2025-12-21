@@ -120,11 +120,10 @@ def generate_candidates(
         leaps_contracts = [c for c in contracts if c.get("dte", 0) >= 540]
         avg_dte = int(sum(c.get("dte", 540) for c in leaps_contracts) / max(len(leaps_contracts), 1)) if leaps_contracts else 540
 
-        # Build assumptions with user-provided expected move
+        # Build assumptions with user-provided expected move (stress = 2x expected auto)
         assumptions = build_assumptions(
             dte=avg_dte,
-            custom_expected=expected_move_pct,
-            custom_stress=expected_move_pct * 2,  # Stress is 2x expected
+            custom_expected_move=expected_move_pct,
             spot_price=spot_price,
         )
 

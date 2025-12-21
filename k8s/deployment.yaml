@@ -18,7 +18,7 @@ spec:
       containers:
         # Node.js frontend container
         - name: chaincopilot
-          image: gcr.io/mythic-delight-114820/chaincopilot:latest
+          image: us-central1-docker.pkg.dev/mythic-delight-114820/chaincopilot/chaincopilot:latest
           ports:
             - containerPort: 3000
           env:
@@ -54,7 +54,7 @@ spec:
 
         # Python FastAPI sidecar for OpenBB (persistent, no spawn overhead)
         - name: python-openbb
-          image: gcr.io/mythic-delight-114820/chaincopilot-python:latest
+          image: us-central1-docker.pkg.dev/mythic-delight-114820/chaincopilot/chaincopilot-python:latest
           ports:
             - containerPort: 8000
           resources:

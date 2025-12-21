@@ -1,0 +1,19 @@
+{
+  "cik": "0000319201",
+  "accession_number": "0000319201-25-000006",
+  "form_type": "10-Q",
+  "company_name": "KLA CORP",
+  "ticker": "KLAC",
+  "filed_at": "2025-01-31T00:00:00",
+  "accepted_at": "2025-01-31T21:05:22+00:00",
+  "period_of_report": "2024-12-31",
+  "status": "ready",
+  "discovered_at": "2025-12-19T05:55:27.211981",
+  "processed_at": "2025-12-19T05:56:23.706796",
+  "error_message": null,
+  "retry_count": 0,
+  "filing_url": "https://www.sec.gov/Archives/edgar/data/319201/000031920125000006/klac-20241231.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/319201/000031920125000006/0000319201-25-000006-index.html",
+  "json_path": "KLAC/KLAC-10-Q-2025-01-31.json",
+  "pdf_path": null
+}

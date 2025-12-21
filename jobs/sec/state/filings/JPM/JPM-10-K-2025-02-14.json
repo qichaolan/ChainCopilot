@@ -1,0 +1,19 @@
+{
+  "cik": "0000019617",
+  "accession_number": "0000019617-25-000270",
+  "form_type": "10-K",
+  "company_name": "JPMORGAN CHASE & CO",
+  "ticker": "JPM",
+  "filed_at": "2025-02-14T00:00:00",
+  "accepted_at": "2025-02-14T21:17:07+00:00",
+  "period_of_report": "2024-12-31",
+  "status": "ready",
+  "discovered_at": "2025-12-19T05:55:34.508163",
+  "processed_at": "2025-12-19T05:56:56.218432",
+  "error_message": null,
+  "retry_count": 0,
+  "filing_url": "https://www.sec.gov/Archives/edgar/data/19617/000001961725000270/jpm-20241231.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/19617/000001961725000270/0000019617-25-000270-index.html",
+  "json_path": "JPM/JPM-10-K-2025-02-14.json",
+  "pdf_path": null
+}

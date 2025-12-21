@@ -50,6 +50,99 @@ MIN_OPEN_INTEREST = 5  # Lower OI threshold for LEAPS (typically less liquid)
 # Profile thresholds
 STOCK_REPLACEMENT_DELTA_THRESHOLD = 0.65
 
+# ============================================================================
+# New 0-1 Scoring Model: Balance Expected ROC with Distance to Breakeven
+# ============================================================================
+
+import math
+
+# Scoring constants (calibrated for LEAPS)
+ROC_TARGET = 0.50  # 50% ROC = excellent LEAPS (more realistic target)
+BE_ALPHA = 0.30    # 30% move to BE gives ~37% score (forgiving for long-dated)
+BE_BETA = 1.20     # Gentler decay curve
+
+
+def _breakeven_score(breakeven_price: float, spot_price: float, is_call: bool = True) -> float:
+    """
+    Calculate breakeven score [0, 1] using exponential decay.
+    Closer to spot = higher score (easier to profit).
+
+    Uses Weibull-like decay: exp(-(be_pct / alpha)^beta)
+    - alpha=0.30: 30% move gives ~37% score (calibrated for LEAPS)
+    - beta=1.20: gentler decay curve
+
+    Args:
+        is_call: True for calls (BE > spot), False for puts (BE < spot)
+    """
+    be_pct = breakeven_price / spot_price - 1
+    if is_call:
+        # For calls: need stock to go UP to BE
+        if be_pct <= 0:
+            return 1.0  # Already ITM
+        return math.exp(-((be_pct / BE_ALPHA) ** BE_BETA))
+    else:
+        # For puts: need stock to go DOWN to BE
+        if be_pct >= 0:
+            return 1.0  # Already ITM
+        return math.exp(-((-be_pct / BE_ALPHA) ** BE_BETA))
+
+
+def _roc_score(expected_roc: float) -> float:
+    """
+    Calculate ROC score [0, 1].
+    50% ROC = perfect score (calibrated for LEAPS), capped at 1.0.
+    """
+    if expected_roc <= 0:
+        return 0.0
+    return min(expected_roc / ROC_TARGET, 1.0)
+
+
+def _calculate_overall_score_v2(
+    breakeven_price: float,
+    spot_price: float,
+    expected_profit_usd: float,
+    premium_usd: float,
+    is_call: bool = True,
+) -> Dict[str, float]:
+    """
+    New 0-1 scoring model combining Expected ROC and Breakeven distance.
+
+    Uses normal-distribution-inspired combination:
+    - Geometric mean: sqrt(be_score * roc_score) - penalizes low scores in either
+    - Scales to 0-100 for UI display
+
+    Args:
+        is_call: True for calls (BE > spot), False for puts (BE < spot)
+
+    Returns dict with component scores for transparency.
+    """
+    # Calculate component scores
+    be_score = _breakeven_score(breakeven_price, spot_price, is_call=is_call)
+
+    # Expected ROC as decimal
+    expected_roc = expected_profit_usd / premium_usd if premium_usd > 0 else 0
+    roc_score = _roc_score(expected_roc)
+
+    # Geometric mean combination (penalizes if either is low)
+    # This is "normal-distribution-based" in spirit:
+    # both components must be good for high overall score
+    if be_score > 0 and roc_score > 0:
+        combined = math.sqrt(be_score * roc_score)
+    else:
+        combined = 0.0
+
+    # Scale to 0-100 for display
+    overall_score = round(combined * 100, 1)
+
+    return {
+        "breakevenScore": round(be_score, 3),
+        "rocScore": round(roc_score, 3),
+        "expectedRocPct": round(expected_roc * 100, 1),
+        "combinedScore": round(combined, 3),
+        "overallScore": overall_score,
+    }
+
+
 def _get_profile_weights(profile_type: str) -> Dict[str, float]:
     """Get reward/risk weights from trader profile config."""
     if profile_type in TRADER_PROFILES:
@@ -182,21 +275,6 @@ def _build_leaps_call_candidate(
         )
         reward_score_value = float(reward_scores.get("rewardScore", 0))
 
-    # Combine into overall score
-    if assumptions and reward_score_value is not None:
-        # Two-stage scoring with profile-based weights
-        overall = round(
-            weights["reward"] * reward_score_value +
-            weights["risk"] * risk_quality_score,
-            1
-        )
-    else:
-        # Fallback: risk quality only (no assumptions)
-        overall = risk_quality_score
-
-    # Merge all scores for transparency
-    all_scores = {**risk_scores, **reward_scores}
-
     # Calculate effective leverage (delta-adjusted participation)
     leverage = (abs(contract["delta"]) * spot_price) / mark_price if mark_price > 0 else 0
 
@@ -205,13 +283,13 @@ def _build_leaps_call_candidate(
 
     # Calculate expected profit based on expected move
     expected_profit_data = None
+    expected_profit_usd = 0.0
     if assumptions:
         dte = contract["dte"]
         annualized_move = assumptions["expectedMovePct"]
-        # Scale to horizon
-        import math
+        # Scale to horizon using compound growth: (1 + annual_move)^years - 1
         t_years = dte / 365.0
-        horizon_move = annualized_move * math.sqrt(t_years)
+        horizon_move = (1 + annualized_move) ** t_years - 1
         expected_price_at_expiry = spot_price * (1 + horizon_move)
         intrinsic_at_expiry = max(0, expected_price_at_expiry - strike_price) * 100
         expected_profit_usd = intrinsic_at_expiry - premium_usd
@@ -223,6 +301,19 @@ def _build_leaps_call_candidate(
             "horizonMovePct": round(horizon_move * 100, 1),
             "annualizedMovePct": round(annualized_move * 100, 1),
         }
+
+    # NEW: Calculate overall score using 0-1 model (Expected ROC + Breakeven distance)
+    score_v2 = _calculate_overall_score_v2(
+        breakeven_price=breakeven_price,
+        spot_price=spot_price,
+        expected_profit_usd=expected_profit_usd,
+        premium_usd=premium_usd,
+        is_call=True,  # This is a call
+    )
+    overall = score_v2["overallScore"]
+
+    # Merge all scores for transparency
+    all_scores = {**risk_scores, **reward_scores, **score_v2}
 
     candidate: StrategyCandidate = {
         "id": f"leaps-call-{idx}-{contract['contractSymbol']}",
@@ -312,18 +403,6 @@ def _build_leaps_put_candidate(
         )
         reward_score_value = float(reward_scores.get("rewardScore", 0))
 
-    # Combine into overall score
-    if assumptions and reward_score_value is not None:
-        # Two-stage scoring with profile-based weights
-        overall = round(
-            weights["reward"] * reward_score_value +
-            weights["risk"] * risk_quality_score,
-            1
-        )
-    else:
-        # Fallback: risk quality only (no assumptions)
-        overall = risk_quality_score
-
     # Merge all scores for transparency
     all_scores = {**risk_scores, **reward_scores}
 
@@ -332,13 +411,13 @@ def _build_leaps_put_candidate(
 
     # Calculate expected profit based on expected move (for puts, expect price to drop)
     expected_profit_data = None
+    expected_profit_usd = 0.0
     if assumptions:
         dte = contract["dte"]
         annualized_move = assumptions["expectedMovePct"]
-        # Scale to horizon
-        import math
+        # Scale to horizon using compound growth: (1 + annual_move)^years - 1
         t_years = dte / 365.0
-        horizon_move = annualized_move * math.sqrt(t_years)
+        horizon_move = (1 + annualized_move) ** t_years - 1
         # For puts: expect price to DROP by horizon_move
         expected_price_at_expiry = spot_price * (1 - horizon_move)
         intrinsic_at_expiry = max(0, strike_price - expected_price_at_expiry) * 100
@@ -351,6 +430,19 @@ def _build_leaps_put_candidate(
             "horizonMovePct": round(horizon_move * 100, 1),
             "annualizedMovePct": round(annualized_move * 100, 1),
         }
+
+    # NEW: Calculate overall score using 0-1 model (Expected ROC + Breakeven distance)
+    score_v2 = _calculate_overall_score_v2(
+        breakeven_price=breakeven_price,
+        spot_price=spot_price,
+        expected_profit_usd=expected_profit_usd,
+        premium_usd=premium_usd,
+        is_call=False,  # This is a put
+    )
+    overall = score_v2["overallScore"]
+
+    # Merge v2 scores into all_scores for transparency
+    all_scores = {**all_scores, **score_v2}
 
     candidate: StrategyCandidate = {
         "id": f"leaps-put-{idx}-{contract['contractSymbol']}",
@@ -484,32 +576,22 @@ def _calculate_risk_quality_score(scores: dict, dte: int = 540) -> float:
 def _scale_annualized_move_to_horizon(
     annualized_move: float,
     dte: int,
-    scaling_type: str = "vol",
 ) -> float:
     """
-    Scale annualized move to the actual time horizon.
+    Scale annualized move to the actual time horizon using compound growth.
 
     For LEAPS with long DTEs, annualized assumptions must be scaled:
-    - vol-style (scenario bands): horizon_move = annual_move * sqrt(T_years)
-    - drift-style (expected return): horizon_move = annual_move * T_years
+    - compound growth: (1 + annual_move)^years - 1
 
     Args:
         annualized_move: Annualized move as decimal (0.10 = 10%)
         dte: Days to expiration
-        scaling_type: "vol" for sqrt(T) scaling, "drift" for linear
 
     Returns:
         Horizon-scaled move as decimal
     """
-    import math
     t_years = dte / 365.0
-
-    if scaling_type == "drift":
-        # Linear scaling for expected return/drift
-        return annualized_move * t_years
-    else:
-        # Vol-style sqrt(T) scaling (default)
-        return annualized_move * math.sqrt(t_years)
+    return (1 + annualized_move) ** t_years - 1
 
 
 def _calculate_reward_scores(
@@ -526,8 +608,8 @@ def _calculate_reward_scores(
 
     Move Scaling (CRITICAL for LEAPS):
     - Assumptions contain ANNUALIZED moves (e.g., 10% annual vol)
-    - For LEAPS, these must be scaled to the actual horizon:
-      horizon_move = annualized_move * sqrt(T_years)  (vol-style)
+    - For LEAPS, these must be scaled using compound growth:
+      horizon_move = (1 + annual_move)^years - 1
 
     Probability-Weighted Scoring:
     - If stressProb is provided, uses EV-style weighting:
@@ -546,17 +628,14 @@ def _calculate_reward_scores(
     # Get DTE from candidate's first leg
     dte = candidate["legs"][0]["contract"]["dte"] if candidate["legs"] else MIN_DTE_LEAPS
 
-    # Get scaling type (default to vol-style for LEAPS)
-    scaling_type = assumptions.get("scalingType", "vol") or "vol"
-
     # Get annualized moves from assumptions
     annualized_expected = assumptions["expectedMovePct"]
     annualized_stress = assumptions["stressMovePct"]
 
-    # Scale to horizon for LEAPS (DTE >= 540 uses annualized inputs)
+    # Scale to horizon for LEAPS using compound growth
     if dte >= MIN_DTE_LEAPS:
-        expected_move = _scale_annualized_move_to_horizon(annualized_expected, dte, scaling_type)
-        stress_move = _scale_annualized_move_to_horizon(annualized_stress, dte, scaling_type)
+        expected_move = _scale_annualized_move_to_horizon(annualized_expected, dte)
+        stress_move = _scale_annualized_move_to_horizon(annualized_stress, dte)
     else:
         # Short-dated: assume moves are already horizon-level
         expected_move = annualized_expected
@@ -596,7 +675,6 @@ def _calculate_reward_scores(
         # Transparency: show the actual scaled moves used
         "horizonExpectedMovePct": round(expected_move * 100, 1),
         "horizonStressMovePct": round(stress_move * 100, 1),
-        "scalingType": scaling_type,
         "horizonYears": round(dte / 365.0, 2),
     }
 

@@ -1,0 +1,19 @@
+{
+  "cik": "0001045810",
+  "accession_number": "0001045810-23-000017",
+  "form_type": "10-K",
+  "company_name": "NVIDIA CORP",
+  "ticker": "NVDA",
+  "filed_at": "2023-02-24T00:00:00",
+  "accepted_at": "2023-02-24T17:23:43+00:00",
+  "period_of_report": "2023-01-29",
+  "status": "ready",
+  "discovered_at": "2025-12-19T05:55:22.176862",
+  "processed_at": "2025-12-19T05:55:59.443665",
+  "error_message": null,
+  "retry_count": 0,
+  "filing_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581023000017/nvda-20230129.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581023000017/0001045810-23-000017-index.html",
+  "json_path": "NVDA/NVDA-10-K-2023-02-24.json",
+  "pdf_path": null
+}

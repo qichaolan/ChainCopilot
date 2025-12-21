@@ -1,5 +1,5 @@
 # ChainCopilot AI Agents
-# Vertex AI Agent Builder agents for options trading
+# Vertex AI Agent Builder agents for options trading and fundamental analysis
 
 # Shared tools (available to all agents)
 from . import tools
@@ -13,17 +13,20 @@ except ImportError:
     STRATEGY_AGENT_CONFIG = None
     _HAS_ADK = False
 
-# LEAPS Builder Agent (requires google-adk, import conditionally)
+# Fundamental Agent (SEC filing analysis)
 try:
-    from .leaps_agent import leaps_agent, AGENT_CONFIG as LEAPS_AGENT_CONFIG
+    from .fundamental_agent.agent import fundamental_graph
+    from .fundamental_agent.server import app as fundamental_app
+    _HAS_FUNDAMENTAL = True
 except ImportError:
-    leaps_agent = None
-    LEAPS_AGENT_CONFIG = None
+    fundamental_graph = None
+    fundamental_app = None
+    _HAS_FUNDAMENTAL = False
 
 __all__ = [
     "tools",
     "strategy_agent",
     "STRATEGY_AGENT_CONFIG",
-    "leaps_agent",
-    "LEAPS_AGENT_CONFIG",
+    "fundamental_graph",
+    "fundamental_app",
 ]

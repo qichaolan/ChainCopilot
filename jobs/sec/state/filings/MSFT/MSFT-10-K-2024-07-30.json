@@ -1,0 +1,19 @@
+{
+  "cik": "0000789019",
+  "accession_number": "0000950170-24-087843",
+  "form_type": "10-K",
+  "company_name": "MICROSOFT CORP",
+  "ticker": "MSFT",
+  "filed_at": "2024-07-30T00:00:00",
+  "accepted_at": "2024-07-30T20:06:22+00:00",
+  "period_of_report": "2024-06-30",
+  "status": "ready",
+  "discovered_at": "2025-12-19T05:55:19.150773",
+  "processed_at": "2025-12-19T05:55:43.360980",
+  "error_message": null,
+  "retry_count": 0,
+  "filing_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017024087843/msft-20240630.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017024087843/0000950170-24-087843-index.html",
+  "json_path": "MSFT/MSFT-10-K-2024-07-30.json",
+  "pdf_path": null
+}

@@ -177,7 +177,7 @@ function TickerStage() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value.toUpperCase())}
-            placeholder="AAPL, TSLA, SPY..."
+            placeholder="SPY, QQQ, AAPL..."
             disabled={state.isProcessing}
             className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-lg uppercase"
             autoFocus
@@ -207,7 +207,7 @@ function TickerStage() {
       <div className="pt-4 border-t border-gray-200 dark:border-slate-700">
         <div className="text-xs text-gray-500 mb-2">Popular tickers</div>
         <div className="flex flex-wrap gap-2">
-          {['AAPL', 'TSLA', 'SPY', 'NVDA', 'AMZN', 'QQQ'].map((ticker) => (
+          {['SPY', 'QQQ', 'IWM', 'AAPL', 'MSFT', 'NVDA', 'AVGO', 'GOOG', 'GOOGL', 'META'].map((ticker) => (
             <button
               key={ticker}
               onClick={() => {

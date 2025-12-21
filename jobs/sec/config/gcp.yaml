@@ -1,0 +1,28 @@
+# SEC Filings Watcher - GCP Deployment Configuration
+#
+# Usage:
+#   SEC_JOB_CONFIG=./config/gcp.yaml python sec_job.py run --watchlist ./config/watchlist.json
+#
+# Prerequisites:
+#   - Service account with Storage Object Admin role
+#   - GOOGLE_APPLICATION_CREDENTIALS environment variable or GCE metadata
+
+# Storage configuration (Google Cloud Storage)
+storage_type: gcs
+gcs_bucket: chaincopilot-sec-filings
+gcs_prefix: sec-state      # State files prefix
+gcs_data_prefix: sec-data  # Downloaded files prefix
+
+# SEC API settings
+user_agent: "SECWatcher/1.0 (research@chaincopilot.cloud)"
+
+# Request settings
+timeout_sec: 30
+retries: 3
+concurrency: 8  # Higher concurrency for cloud
+
+# PDF rendering (optional - sec-api.io for high-quality PDFs)
+pdf_renderer: skip  # or "sec-api" with key below
+
+# Optional: sec-api.io API key (set via environment or Secret Manager)
+# SEC_API_KEY: from-secret-manager

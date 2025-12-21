@@ -1,5 +1,6 @@
 # Cloud Build configuration for GKE deployment
 # Usage: gcloud builds submit --config cloudbuild.yaml
+# Uses Artifact Registry (gcr.io is deprecated)
 
 steps:
   # Build the Node.js Docker image
@@ -7,9 +8,9 @@ steps:
     args:
       - 'build'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/chaincopilot:$COMMIT_SHA'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/chaincopilot/chaincopilot:$COMMIT_SHA'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/chaincopilot:latest'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/chaincopilot/chaincopilot:latest'
       - '.'
 
   # Build the Python sidecar Docker image
@@ -19,39 +20,39 @@ steps:
       - '-f'
       - 'Dockerfile.python'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/chaincopilot-python:$COMMIT_SHA'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/chaincopilot/chaincopilot-python:$COMMIT_SHA'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/chaincopilot-python:latest'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/chaincopilot/chaincopilot-python:latest'
       - '.'
 
   # Push Node.js images
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'gcr.io/$PROJECT_ID/chaincopilot:$COMMIT_SHA'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/chaincopilot/chaincopilot:$COMMIT_SHA'
 
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'gcr.io/$PROJECT_ID/chaincopilot:latest'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/chaincopilot/chaincopilot:latest'
 
   # Push Python sidecar images
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'gcr.io/$PROJECT_ID/chaincopilot-python:$COMMIT_SHA'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/chaincopilot/chaincopilot-python:$COMMIT_SHA'
 
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'gcr.io/$PROJECT_ID/chaincopilot-python:latest'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/chaincopilot/chaincopilot-python:latest'
 
   # Deploy to GKE
   - name: 'gcr.io/cloud-builders/gke-deploy'
     args:
       - 'run'
       - '--filename=k8s/deployment.yaml'
-      - '--image=gcr.io/$PROJECT_ID/chaincopilot:$COMMIT_SHA'
+      - '--image=us-central1-docker.pkg.dev/$PROJECT_ID/chaincopilot/chaincopilot:$COMMIT_SHA'
       - '--location=${_GKE_LOCATION}'
       - '--cluster=${_GKE_CLUSTER}'
 
@@ -60,10 +61,10 @@ substitutions:
   _GKE_LOCATION: us-central1
 
 images:
-  - 'gcr.io/$PROJECT_ID/chaincopilot:$COMMIT_SHA'
-  - 'gcr.io/$PROJECT_ID/chaincopilot:latest'
-  - 'gcr.io/$PROJECT_ID/chaincopilot-python:$COMMIT_SHA'
-  - 'gcr.io/$PROJECT_ID/chaincopilot-python:latest'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/chaincopilot/chaincopilot:$COMMIT_SHA'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/chaincopilot/chaincopilot:latest'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/chaincopilot/chaincopilot-python:$COMMIT_SHA'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/chaincopilot/chaincopilot-python:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY

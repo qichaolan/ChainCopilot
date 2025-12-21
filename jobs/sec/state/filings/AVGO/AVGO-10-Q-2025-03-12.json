@@ -1,0 +1,19 @@
+{
+  "cik": "0001730168",
+  "accession_number": "0001730168-25-000021",
+  "form_type": "10-Q",
+  "company_name": "Broadcom Inc.",
+  "ticker": "AVGO",
+  "filed_at": "2025-03-12T00:00:00",
+  "accepted_at": "2025-03-12T20:38:04+00:00",
+  "period_of_report": "2025-02-02",
+  "status": "ready",
+  "discovered_at": "2025-12-19T05:55:23.179754",
+  "processed_at": "2025-12-19T05:56:02.446678",
+  "error_message": null,
+  "retry_count": 0,
+  "filing_url": "https://www.sec.gov/Archives/edgar/data/1730168/000173016825000021/avgo-20250202.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/1730168/000173016825000021/0001730168-25-000021-index.html",
+  "json_path": "AVGO/AVGO-10-Q-2025-03-12.json",
+  "pdf_path": null
+}

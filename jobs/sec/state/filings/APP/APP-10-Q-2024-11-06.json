@@ -1,0 +1,19 @@
+{
+  "cik": "0001751008",
+  "accession_number": "0001751008-24-000062",
+  "form_type": "10-Q",
+  "company_name": "AppLovin Corp",
+  "ticker": "APP",
+  "filed_at": "2024-11-06T00:00:00",
+  "accepted_at": "2024-11-06T22:05:42+00:00",
+  "period_of_report": "2024-09-30",
+  "status": "ready",
+  "discovered_at": "2025-12-19T05:55:35.279601",
+  "processed_at": "2025-12-19T05:56:57.580293",
+  "error_message": null,
+  "retry_count": 0,
+  "filing_url": "https://www.sec.gov/Archives/edgar/data/1751008/000175100824000062/app-20240930.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/1751008/000175100824000062/0001751008-24-000062-index.html",
+  "json_path": "APP/APP-10-Q-2024-11-06.json",
+  "pdf_path": null
+}
